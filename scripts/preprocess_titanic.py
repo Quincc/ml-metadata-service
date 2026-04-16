@@ -14,16 +14,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--input",
         required=True,
-        help="Path to the raw Titanic CSV file, for example data/train.csv",
+        help="Path to the raw Titanic CSV file, for example data/raw/Titanic-Dataset.csv",
     )
     parser.add_argument(
         "--output",
-        default="data/train_cleaned.csv",
+        default="data/processed/train_cleaned.csv",
         help="Path to the cleaned CSV file",
     )
     parser.add_argument(
         "--schema-output",
-        default="data/train_cleaned_schema.json",
+        default="data/schemas/train_cleaned_schema.json",
         help="Path to the generated schema JSON file",
     )
     return parser
