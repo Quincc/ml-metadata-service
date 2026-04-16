@@ -14,7 +14,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--input",
         required=True,
-        help="Path to the raw Titanic CSV file, for example data/raw/Titanic-Dataset.csv",
+        help="Path to the raw Titanic CSV file, for example data/raw/titanic_dataset.csv",
     )
     parser.add_argument(
         "--output",

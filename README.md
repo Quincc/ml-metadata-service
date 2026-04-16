@@ -44,7 +44,7 @@ alembic/
   versions/
 data/
   raw/
-    Titanic-Dataset.csv
+    titanic_dataset.csv
   processed/
     train_cleaned.csv
   schemas/
@@ -219,14 +219,14 @@ source -> dataset -> dataset_version -> feature_set -> experiment
 Исходный файл:
 
 ```text
-data/raw/Titanic-Dataset.csv
+data/raw/titanic_dataset.csv
 ```
 
 Скрипт preprocessing:
 
 ```bash
 uv run python scripts/preprocess_titanic.py \
-  --input data/raw/Titanic-Dataset.csv \
+  --input data/raw/titanic_dataset.csv \
   --output data/processed/train_cleaned.csv \
   --schema-output data/schemas/train_cleaned_schema.json
 ```
