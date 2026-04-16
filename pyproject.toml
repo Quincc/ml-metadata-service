@@ -1,0 +1,19 @@
+[project]
+name = "ml-metadata-management-service"
+version = "0.1.0"
+description = "Minimal FastAPI backend for ML metadata management"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi==0.115.12",
+    "uvicorn[standard]==0.34.2",
+    "sqlalchemy==2.0.40",
+    "alembic==1.14.1",
+    "pydantic==2.11.3",
+    "psycopg[binary]==3.2.7",
+    "jinja2==3.1.6",
+    "python-multipart==0.0.20",
+    "pandas==2.2.3",
+]
+
+[tool.uv]
+package = false
