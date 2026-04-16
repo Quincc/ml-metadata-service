@@ -1,0 +1,44 @@
+{
+  "fields": [
+    {
+      "name": "PassengerId",
+      "type": "int"
+    },
+    {
+      "name": "Survived",
+      "type": "int"
+    },
+    {
+      "name": "Pclass",
+      "type": "int"
+    },
+    {
+      "name": "SexEncoded",
+      "type": "int"
+    },
+    {
+      "name": "Age",
+      "type": "float"
+    },
+    {
+      "name": "SibSp",
+      "type": "int"
+    },
+    {
+      "name": "Parch",
+      "type": "int"
+    },
+    {
+      "name": "Fare",
+      "type": "float"
+    },
+    {
+      "name": "EmbarkedEncoded",
+      "type": "int"
+    },
+    {
+      "name": "FamilySize",
+      "type": "int"
+    }
+  ]
+}

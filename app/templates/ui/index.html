@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Metadata Atlas{% endblock %}
+
+{% block body %}
+  <div class="page-shell">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <header class="hero">
+      <div>
+        <p class="eyebrow">ML Metadata Control Room</p>
+        <h1>Metadata Atlas</h1>
+        <p class="hero-copy">
+          Управляйте источниками, датасетами, версиями схем и lineage в одном демонстрационном интерфейсе.
+        </p>
+      </div>
+      <div class="hero-actions">
+        <a class="ghost-link" href="/docs">OpenAPI</a>
+        <a class="ghost-link" href="/redoc">ReDoc</a>
+      </div>
+    </header>
+
+    {% include "ui/_dashboard_content.html" %}
+  </div>
+{% endblock %}
