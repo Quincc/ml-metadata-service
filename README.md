@@ -1,7 +1,7 @@
 # ML Metadata Management Service
 
 Сервис для управления метаданными ML pipeline на `FastAPI`.
-Проект хранит не сами датасеты, а информацию о них: источник, датасет, версии данных, версии схем, feature sets, эксперименты и lineage между сущностями.
+Проект хранит не сами датасеты, а сведения о них: источник, датасет, версии данных, версии схем, feature sets, эксперименты и lineage между сущностями.
 
 В проекте есть:
 - REST API на `FastAPI`
@@ -28,8 +28,6 @@
 
 ```text
 app/
-  data/
-    Titanic-Dataset.csv
   models/
   routers/
   schemas/
@@ -45,8 +43,12 @@ alembic/
   env.py
   versions/
 data/
-  train_cleaned.csv
-  train_cleaned_schema.json
+  raw/
+    Titanic-Dataset.csv
+  processed/
+    train_cleaned.csv
+  schemas/
+    train_cleaned_schema.json
 Dockerfile
 docker-compose.yml
 pyproject.toml
@@ -208,21 +210,25 @@ source -> dataset -> dataset_version -> feature_set -> experiment
 
 ## Пример с Titanic
 
-В проекте есть учебный сценарий для датасета Titanic.
+В проекте есть учебный сценарий для датасета Titanic. Данные теперь разделены по назначению:
+
+- `data/raw/` — исходные файлы
+- `data/processed/` — подготовленные данные
+- `data/schemas/` — экспортированные JSON-схемы
 
 Исходный файл:
 
 ```text
-app/data/Titanic-Dataset.csv
+data/raw/Titanic-Dataset.csv
 ```
 
 Скрипт preprocessing:
 
 ```bash
 uv run python scripts/preprocess_titanic.py \
-  --input app/data/Titanic-Dataset.csv \
-  --output data/train_cleaned.csv \
-  --schema-output data/train_cleaned_schema.json
+  --input data/raw/Titanic-Dataset.csv \
+  --output data/processed/train_cleaned.csv \
+  --schema-output data/schemas/train_cleaned_schema.json
 ```
 
 Скрипт:
@@ -236,13 +242,13 @@ uv run python scripts/preprocess_titanic.py \
 - сохраняет очищенный CSV и JSON-схему
 
 После выполнения появятся:
-- `data/train_cleaned.csv`
-- `data/train_cleaned_schema.json`
+- `data/processed/train_cleaned.csv`
+- `data/schemas/train_cleaned_schema.json`
 
 Дальше можно:
 - зарегистрировать `Titanic CSV` как `Data Source`
 - создать датасет `titanic_survival`
-- добавить `Schema Version` из `train_cleaned_schema.json`
+- добавить `Schema Version` из `data/schemas/train_cleaned_schema.json`
 - добавить `Dataset Version`
 - создать `Feature Set`
 - создать `Experiment`
@@ -282,3 +288,7 @@ pip install -r requirements.txt
 export DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/metadata_db
 uvicorn app.main:app --reload
 ```
+
+## License
+
+MIT
