@@ -5,6 +5,7 @@ from app.models.datasource import DataSource
 from app.models.experiment import Experiment
 from app.models.feature_set import FeatureSet
 from app.models.lineage import LineageEdge
+from app.models.model import Model
 from app.models.schema_version import SchemaVersion
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "SchemaVersion",
     "FeatureSet",
     "Experiment",
+    "Model",
     "LineageEdge",
 ]

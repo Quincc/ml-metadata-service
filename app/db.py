@@ -1,4 +1,3 @@
-import os
 import time
 from collections.abc import Generator
 
@@ -6,11 +5,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
+from app.settings import get_settings
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg://postgres:postgres@localhost:5432/metadata_db",
-)
+
+_settings = get_settings()
+DATABASE_URL = _settings.database_url
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
@@ -27,16 +26,19 @@ class Base(DeclarativeBase):
     pass
 
 
-def wait_for_database(max_attempts: int = 10, delay_seconds: int = 2) -> None:
+def wait_for_database(max_attempts: int | None = None, delay_seconds: int | None = None) -> None:
+    settings = get_settings()
+    attempts = max_attempts if max_attempts is not None else settings.db_wait_max_attempts
+    delay = delay_seconds if delay_seconds is not None else settings.db_wait_delay_seconds
     last_error: OperationalError | None = None
 
-    for _ in range(max_attempts):
+    for _ in range(attempts):
         try:
             with engine.connect():
                 return
         except OperationalError as exc:
             last_error = exc
-            time.sleep(delay_seconds)
+            time.sleep(delay)
 
     if last_error is not None:
         raise last_error

@@ -30,27 +30,37 @@ TABLES = [
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
     for table_name in TABLES:
-        op.add_column(
-            table_name,
-            sa.Column(
-                "updated_at",
-                sa.DateTime(timezone=True),
-                server_default=sa.text("now()"),
-                nullable=False,
-            ),
-        )
-        op.add_column(
-            table_name,
-            sa.Column(
-                "deleted_at",
-                sa.DateTime(timezone=True),
-                nullable=True,
-            ),
-        )
+        existing = {col["name"] for col in inspector.get_columns(table_name)}
+        if "updated_at" not in existing:
+            op.add_column(
+                table_name,
+                sa.Column(
+                    "updated_at",
+                    sa.DateTime(timezone=True),
+                    server_default=sa.text("now()"),
+                    nullable=False,
+                ),
+            )
+        if "deleted_at" not in existing:
+            op.add_column(
+                table_name,
+                sa.Column(
+                    "deleted_at",
+                    sa.DateTime(timezone=True),
+                    nullable=True,
+                ),
+            )
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
     for table_name in reversed(TABLES):
-        op.drop_column(table_name, "deleted_at")
-        op.drop_column(table_name, "updated_at")
+        existing = {col["name"] for col in inspector.get_columns(table_name)}
+        if "deleted_at" in existing:
+            op.drop_column(table_name, "deleted_at")
+        if "updated_at" in existing:
+            op.drop_column(table_name, "updated_at")
