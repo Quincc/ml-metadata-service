@@ -48,51 +48,6 @@
     {{ displays.stat_card('Experiments', counts.experiments) }}
   </section>
 
-  <section class="panel wide">
-    {{ displays.panel_header(
-      'Live Graph Lookup',
-      'Lineage Explorer',
-      'Выберите сущность и получите все связанные узлы и ребра происхождения данных.'
-    ) }}
-    <form class="form-inline" hx-get="/ui/lineage" hx-target="#dashboard-content" hx-swap="outerHTML">
-      {{ forms.select('entity_type', 'Entity type', lineage_entity_types, selected=selected_entity_type, required=True, placeholder='Select entity') }}
-      {{ forms.text_input('entity_id', 'Entity id', '1', selected_entity_id or '', True, 'number') }}
-      <button type="submit">Show lineage</button>
-    </form>
-
-    <div class="lineage-board">
-      {% if lineage_graph %}
-        <div class="lineage-column">
-          <h3>Nodes</h3>
-          <div class="chip-list">
-            {% for node in lineage_graph.nodes %}
-              <div class="entity-chip">
-                <span>{{ node.entity_type }}</span>
-                <strong>#{{ node.entity_id }}</strong>
-              </div>
-            {% endfor %}
-          </div>
-        </div>
-        <div class="lineage-column">
-          <h3>Edges</h3>
-          <div class="timeline">
-            {% for edge in lineage_graph.edges %}
-              <article class="timeline-item">
-                <span class="timeline-relation">{{ edge.relation_type }}</span>
-                <p>{{ edge.from_entity_type }} #{{ edge.from_entity_id }} → {{ edge.to_entity_type }} #{{ edge.to_entity_id }}</p>
-              </article>
-            {% endfor %}
-          </div>
-        </div>
-      {% else %}
-        <div class="placeholder-card">
-          <h3>Lineage preview is empty</h3>
-          <p>Создайте несколько объектов ниже и выполните поиск, чтобы увидеть связи между ними.</p>
-        </div>
-      {% endif %}
-    </div>
-  </section>
-
   <section class="panel">
     {{ displays.panel_header('Register', 'Data Source') }}
     <form class="stacked-form" hx-post="/ui/sources" hx-target="#dashboard-content" hx-swap="outerHTML">

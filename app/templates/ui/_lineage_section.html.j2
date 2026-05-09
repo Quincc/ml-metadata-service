@@ -1,0 +1,114 @@
+<section id="lineage-section" class="panel wide">
+  {% import "components/forms.html.j2" as forms %}
+  {% import "components/displays.html.j2" as displays %}
+
+  {% if lineage_error %}
+    <div class="notice error">{{ lineage_error }}</div>
+  {% endif %}
+
+  {{ displays.panel_header(
+    'Live Graph Lookup',
+    'Lineage Explorer',
+    'Выберите сущность и получите все связанные узлы и ребра происхождения данных.'
+  ) }}
+  <form class="form-inline" hx-get="/ui/lineage" hx-target="#lineage-section" hx-swap="outerHTML">
+    {{ forms.select('entity_type', 'Entity type', lineage_entity_types, selected=selected_entity_type, required=True, placeholder='Select entity') }}
+    {{ forms.text_input('entity_id', 'Entity id', '1', selected_entity_id or '', True, 'number') }}
+    <button type="submit">Show lineage</button>
+  </form>
+
+  <div class="lineage-board">
+    {% if lineage_graph %}
+      {% set vis_nodes = [] %}
+      {% for node in lineage_graph.nodes %}
+        {% set label = node.entity_type ~ ' #' ~ node.entity_id %}
+        {% if node.entity_type == 'source' and source_lookup.get(node.entity_id) %}
+          {% set label = 'source: ' ~ source_lookup[node.entity_id] %}
+        {% elif node.entity_type == 'dataset' and dataset_lookup.get(node.entity_id) %}
+          {% set label = 'dataset: ' ~ dataset_lookup[node.entity_id] %}
+        {% elif node.entity_type == 'schema_version' and schema_lookup.get(node.entity_id) %}
+          {% set label = 'schema ' ~ schema_lookup[node.entity_id] %}
+        {% elif node.entity_type == 'dataset_version' and dataset_version_lookup.get(node.entity_id) %}
+          {% set label = 'version ' ~ dataset_version_lookup[node.entity_id] %}
+        {% elif node.entity_type == 'feature_set' and feature_lookup.get(node.entity_id) %}
+          {% set label = 'features: ' ~ feature_lookup[node.entity_id] %}
+        {% endif %}
+        {% set _ = vis_nodes.append({
+          'id': node.entity_type ~ ':' ~ node.entity_id,
+          'label': label,
+          'group': node.entity_type
+        }) %}
+      {% endfor %}
+      {% set vis_edges = [] %}
+      {% for edge in lineage_graph.edges %}
+        {% set _ = vis_edges.append({
+          'from': edge.from_entity_type ~ ':' ~ edge.from_entity_id,
+          'to': edge.to_entity_type ~ ':' ~ edge.to_entity_id,
+          'label': edge.relation_type
+        }) %}
+      {% endfor %}
+      <div id="lineage-graph" data-root="{{ lineage_graph.root_entity_type }}:{{ lineage_graph.root_entity_id }}"></div>
+      <script type="application/json" id="lineage-graph-nodes">{{ vis_nodes | tojson }}</script>
+      <script type="application/json" id="lineage-graph-edges">{{ vis_edges | tojson }}</script>
+      <script>
+        (function () {
+          var container = document.getElementById('lineage-graph');
+          var nodesEl = document.getElementById('lineage-graph-nodes');
+          var edgesEl = document.getElementById('lineage-graph-edges');
+          if (!container || !nodesEl || !edgesEl || typeof vis === 'undefined') return;
+          var nodes, edges;
+          try {
+            nodes = JSON.parse(nodesEl.textContent);
+            edges = JSON.parse(edgesEl.textContent);
+          } catch (e) {
+            console.error('lineage-graph: invalid JSON', e);
+            return;
+          }
+          var rootId = container.dataset.root;
+          nodes.forEach(function (n) {
+            if (n.id === rootId) {
+              n.borderWidth = 3;
+              n.font = { color: '#fff', size: 16, face: 'Inter, sans-serif' };
+            } else {
+              n.font = { color: '#e6ebff', size: 14, face: 'Inter, sans-serif' };
+            }
+          });
+          var data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
+          var options = {
+            layout: { hierarchical: { enabled: true, direction: 'LR', sortMethod: 'directed', levelSeparation: 180, nodeSpacing: 140 } },
+            nodes: { shape: 'box', margin: 10, borderWidth: 1, color: { background: '#1e2447', border: '#5b6cff', highlight: { background: '#2d3675', border: '#8ea2ff' } } },
+            edges: { arrows: 'to', color: { color: '#6b7bb8', highlight: '#8ea2ff' }, font: { color: '#a8b2d8', size: 11, strokeWidth: 0, align: 'middle' }, smooth: { type: 'cubicBezier', forceDirection: 'horizontal' } },
+            groups: {
+              source:          { color: { background: '#3a2a5c', border: '#a78bfa' } },
+              dataset:         { color: { background: '#1e3a5f', border: '#60a5fa' } },
+              schema_version:  { color: { background: '#1e4d3a', border: '#34d399' } },
+              dataset_version: { color: { background: '#4d3a1e', border: '#fbbf24' } },
+              feature_set:     { color: { background: '#5c1e3a', border: '#f472b6' } },
+              experiment:      { color: { background: '#5c2a1e', border: '#fb7185' } }
+            },
+            physics: false,
+            interaction: { hover: true, zoomView: true, dragView: true }
+          };
+          var network = new vis.Network(container, data, options);
+          network.on('click', function (params) {
+            if (!params.nodes || params.nodes.length === 0) return;
+            var parts = String(params.nodes[0]).split(':');
+            if (parts.length !== 2) return;
+            if (window.htmx) {
+              window.htmx.ajax('GET',
+                '/ui/lineage?entity_type=' + encodeURIComponent(parts[0]) + '&entity_id=' + encodeURIComponent(parts[1]),
+                { target: '#lineage-section', swap: 'outerHTML' }
+              );
+            }
+          });
+          container.style.cursor = 'pointer';
+        })();
+      </script>
+    {% else %}
+      <div class="placeholder-card">
+        <h3>Lineage preview is empty</h3>
+        <p>Создайте несколько объектов ниже и выполните поиск, чтобы увидеть связи между ними.</p>
+      </div>
+    {% endif %}
+  </div>
+</section>

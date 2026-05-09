@@ -106,21 +106,27 @@ def _render_dashboard(
     message: str | None = None,
     error: str | None = None,
     lineage_graph: LineageGraph | None = None,
+    lineage_error: str | None = None,
     selected_entity_type: str = "dataset",
     selected_entity_id: int | None = None,
-    full_page: bool = False,
+    partial: str = "dashboard",
 ) -> HTMLResponse:
     context = {
         "request": request,
         "message": message,
         "error": error,
         "lineage_graph": lineage_graph,
+        "lineage_error": lineage_error,
         "selected_entity_type": selected_entity_type,
         "selected_entity_id": selected_entity_id,
         **_load_dashboard_data(db),
     }
-    template_name = "ui/index.html.j2" if full_page else "ui/_dashboard_content.html.j2"
-    return templates.TemplateResponse(template_name, context)
+    template_map = {
+        "full": "ui/index.html.j2",
+        "dashboard": "ui/_dashboard_content.html.j2",
+        "lineage": "ui/_lineage_section.html.j2",
+    }
+    return templates.TemplateResponse(template_map[partial], context)
 
 
 def _commit_or_rollback(db: DBSession) -> None:
@@ -140,7 +146,7 @@ def _handle_ui_error(db: DBSession, exc: Exception) -> str:
 
 @router.get("", response_class=HTMLResponse)
 def dashboard(request: Request, db: DBSession) -> HTMLResponse:
-    return _render_dashboard(request, db, full_page=True)
+    return _render_dashboard(request, db, partial="full")
 
 
 @router.post("/sources", response_class=HTMLResponse)
@@ -368,7 +374,14 @@ def view_lineage_ui(
     entity_id: int,
 ) -> HTMLResponse:
     if entity_type not in LINEAGE_ENTITY_TYPES:
-        return _render_dashboard(request, db, error="Unsupported entity type for lineage lookup")
+        return _render_dashboard(
+            request,
+            db,
+            lineage_error="Unsupported entity type for lineage lookup",
+            selected_entity_type=entity_type,
+            selected_entity_id=entity_id,
+            partial="lineage",
+        )
 
     nodes, edges = LineageService.get_graph(db=db, entity_type=entity_type, entity_id=entity_id)
     lineage_graph = LineageGraph(
@@ -380,8 +393,8 @@ def view_lineage_ui(
     return _render_dashboard(
         request,
         db,
-        message=f"Lineage loaded for {entity_type} #{entity_id}",
         lineage_graph=lineage_graph,
         selected_entity_type=entity_type,
         selected_entity_id=entity_id,
+        partial="lineage",
     )
