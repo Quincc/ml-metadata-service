@@ -34,6 +34,8 @@ class Experiment(TimeStampMixin, Base):
         server_default="finished",
         comment='Статус эксперимента: created/running/finished/failed',
     )
+    notebook_url: Mapped[str | None] = mapped_column(String(512), nullable=True, comment='Ссылка на notebook')
+    report_path: Mapped[str | None] = mapped_column(String(512), nullable=True, comment='Путь к отчёту')
 
     feature_set: Mapped['FeatureSet'] = relationship(back_populates='experiments')
     models: Mapped[list['Model']] = relationship(back_populates='experiment')

@@ -35,6 +35,8 @@ services:
       - "8000:8000"
     volumes:
       - ./app:/service/app
+      - ./alembic:/service/alembic
+      - ./alembic.ini:/service/alembic.ini
     depends_on:
       db:
         condition: service_healthy

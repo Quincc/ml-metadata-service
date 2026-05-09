@@ -379,6 +379,17 @@ tbody tr:last-child td {
   white-space: pre;
 }
 
+.artifact-list {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.artifact-list a { color: #8ea2ff; text-decoration: none; word-break: break-all; }
+.artifact-list a:hover { text-decoration: underline; }
+
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

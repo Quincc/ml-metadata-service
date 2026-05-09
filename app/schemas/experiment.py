@@ -16,6 +16,8 @@ class ExperimentCreate(BaseModel):
     parameters_json: dict[str, Any] = Field(..., title='JSON параметров эксперимента')
     metrics_json: dict[str, Any] = Field(..., title='JSON метрик эксперимента')
     status: ExperimentStatus = Field(default='finished', title='Статус эксперимента')
+    notebook_url: str | None = Field(default=None, title='Ссылка на notebook')
+    report_path: str | None = Field(default=None, title='Путь к отчёту')
 
 
 class ExperimentRead(ExperimentCreate, TimeStampResponseSchema):
