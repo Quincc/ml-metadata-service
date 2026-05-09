@@ -30,6 +30,16 @@ LINEAGE_ENTITY_TYPES = [
     "experiment",
 ]
 
+SOURCE_TYPE_OPTIONS = [
+    "csv",
+    "parquet",
+    "postgresql",
+    "mysql",
+    "s3",
+    "api",
+    "filesystem",
+]
+
 
 def _parse_json_field(value: str, field_name: str) -> dict[str, Any]:
     try:
@@ -85,6 +95,7 @@ def _load_dashboard_data(db: DBSession) -> dict[str, Any]:
         },
         "feature_lookup": {feature_set.id: feature_set.name for feature_set in feature_sets},
         "lineage_entity_types": LINEAGE_ENTITY_TYPES,
+        "source_type_options": SOURCE_TYPE_OPTIONS,
     }
 
 
@@ -108,7 +119,7 @@ def _render_dashboard(
         "selected_entity_id": selected_entity_id,
         **_load_dashboard_data(db),
     }
-    template_name = "ui/index.html" if full_page else "ui/_dashboard_content.html"
+    template_name = "ui/index.html.j2" if full_page else "ui/_dashboard_content.html.j2"
     return templates.TemplateResponse(template_name, context)
 
 

@@ -1,0 +1,222 @@
+{% import "components/forms.html.j2" as forms %}
+{% import "components/displays.html.j2" as displays %}
+
+{% set source_rows = [] %}
+{% for source in sources[:6] %}
+  {% set _ = source_rows.append(['#' ~ source.id, source.name, source.source_type, source.location]) %}
+{% endfor %}
+
+{% set dataset_rows = [] %}
+{% for dataset in datasets[:6] %}
+  {% set _ = dataset_rows.append(['#' ~ dataset.id, dataset.name, source_lookup.get(dataset.source_id, 'Unknown')]) %}
+{% endfor %}
+
+{% set schema_rows = [] %}
+{% for schema_version in schema_versions[:6] %}
+  {% set _ = schema_rows.append(['#' ~ schema_version.id, dataset_lookup.get(schema_version.dataset_id, 'Unknown'), 'v' ~ schema_version.version_number]) %}
+{% endfor %}
+
+{% set dataset_version_rows = [] %}
+{% for version in dataset_versions[:6] %}
+  {% set _ = dataset_version_rows.append(['#' ~ version.id, dataset_lookup.get(version.dataset_id, 'Unknown'), 'v' ~ version.version_number]) %}
+{% endfor %}
+
+{% set feature_rows = [] %}
+{% for feature_set in feature_sets[:6] %}
+  {% set _ = feature_rows.append(['#' ~ feature_set.id, feature_set.name, dataset_version_lookup.get(feature_set.dataset_version_id, 'Unknown')]) %}
+{% endfor %}
+
+{% set experiment_rows = [] %}
+{% for experiment in experiments[:6] %}
+  {% set _ = experiment_rows.append(['#' ~ experiment.id, experiment.name, feature_lookup.get(experiment.feature_set_id, 'Unknown')]) %}
+{% endfor %}
+
+<main id="dashboard-content" class="dashboard-grid">
+  {% if message %}
+    <div class="notice success">{{ message }}</div>
+  {% endif %}
+  {% if error %}
+    <div class="notice error">{{ error }}</div>
+  {% endif %}
+
+  <section class="stats-panel">
+    {{ displays.stat_card('Sources', counts.sources) }}
+    {{ displays.stat_card('Datasets', counts.datasets) }}
+    {{ displays.stat_card('Schema Versions', counts.schema_versions) }}
+    {{ displays.stat_card('Dataset Versions', counts.dataset_versions) }}
+    {{ displays.stat_card('Feature Sets', counts.feature_sets) }}
+    {{ displays.stat_card('Experiments', counts.experiments) }}
+  </section>
+
+  <section class="panel wide">
+    {{ displays.panel_header(
+      'Live Graph Lookup',
+      'Lineage Explorer',
+      'Выберите сущность и получите все связанные узлы и ребра происхождения данных.'
+    ) }}
+    <form class="form-inline" hx-get="/ui/lineage" hx-target="#dashboard-content" hx-swap="outerHTML">
+      {{ forms.select('entity_type', 'Entity type', lineage_entity_types, selected=selected_entity_type, required=True, placeholder='Select entity') }}
+      {{ forms.text_input('entity_id', 'Entity id', '1', selected_entity_id or '', True, 'number') }}
+      <button type="submit">Show lineage</button>
+    </form>
+
+    <div class="lineage-board">
+      {% if lineage_graph %}
+        <div class="lineage-column">
+          <h3>Nodes</h3>
+          <div class="chip-list">
+            {% for node in lineage_graph.nodes %}
+              <div class="entity-chip">
+                <span>{{ node.entity_type }}</span>
+                <strong>#{{ node.entity_id }}</strong>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="lineage-column">
+          <h3>Edges</h3>
+          <div class="timeline">
+            {% for edge in lineage_graph.edges %}
+              <article class="timeline-item">
+                <span class="timeline-relation">{{ edge.relation_type }}</span>
+                <p>{{ edge.from_entity_type }} #{{ edge.from_entity_id }} → {{ edge.to_entity_type }} #{{ edge.to_entity_id }}</p>
+              </article>
+            {% endfor %}
+          </div>
+        </div>
+      {% else %}
+        <div class="placeholder-card">
+          <h3>Lineage preview is empty</h3>
+          <p>Создайте несколько объектов ниже и выполните поиск, чтобы увидеть связи между ними.</p>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="panel">
+    {{ displays.panel_header('Register', 'Data Source') }}
+    <form class="stacked-form" hx-post="/ui/sources" hx-target="#dashboard-content" hx-swap="outerHTML">
+      {{ forms.text_input('name', 'Name', 'S3 Raw Storage', required=True) }}
+      {{ forms.select('source_type', 'Type', source_type_options, required=True, placeholder='Select type') }}
+      {{ forms.text_input('location', 'Location', 's3://ml-bucket/raw', required=True) }}
+      <button type="submit">Create source</button>
+    </form>
+    {{ displays.entity_table(['ID', 'Name', 'Type', 'Location'], source_rows, 'No sources yet') }}
+  </section>
+
+  <section class="panel">
+    {{ displays.panel_header('Register', 'Dataset') }}
+    <form class="stacked-form" hx-post="/ui/datasets" hx-target="#dashboard-content" hx-swap="outerHTML">
+      {{ forms.text_input('name', 'Name', 'customer_churn', required=True) }}
+      {{ forms.textarea('description', 'Description', placeholder='Dataset for churn prediction') }}
+      <label>
+        <span>Source</span>
+        <select name="source_id" required>
+          <option value="">Select source</option>
+          {% for source in sources %}
+            <option value="{{ source.id }}">#{{ source.id }} · {{ source.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit">Create dataset</button>
+    </form>
+    {{ displays.entity_table(['ID', 'Name', 'Source'], dataset_rows, 'No datasets yet') }}
+  </section>
+
+  <section class="panel">
+    {{ displays.panel_header('Versioning', 'Schema Version') }}
+    <form class="stacked-form" hx-post="/ui/schema-versions" hx-target="#dashboard-content" hx-swap="outerHTML">
+      <label>
+        <span>Dataset</span>
+        <select name="dataset_id" required>
+          <option value="">Select dataset</option>
+          {% for dataset in datasets %}
+            <option value="{{ dataset.id }}">#{{ dataset.id }} · {{ dataset.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {{ forms.text_input('version_number', 'Version number', 'auto', '', False, 'number') }}
+      {{ forms.textarea('schema_json', 'Schema JSON', '{
+  "fields": [
+    {"name": "customer_id", "type": "int"},
+    {"name": "target", "type": "int"}
+  ]
+}', required=True, css_class='code-input') }}
+      <button type="submit">Create schema</button>
+    </form>
+    {{ displays.entity_table(['ID', 'Dataset', 'Version'], schema_rows, 'No schema versions yet') }}
+  </section>
+
+  <section class="panel">
+    {{ displays.panel_header('Versioning', 'Dataset Version') }}
+    <form class="stacked-form" hx-post="/ui/dataset-versions" hx-target="#dashboard-content" hx-swap="outerHTML">
+      <label>
+        <span>Dataset</span>
+        <select name="dataset_id" required>
+          <option value="">Select dataset</option>
+          {% for dataset in datasets %}
+            <option value="{{ dataset.id }}">#{{ dataset.id }} · {{ dataset.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {{ forms.text_input('version_number', 'Version number', 'auto', '', False, 'number') }}
+      <label>
+        <span>Schema version</span>
+        <select name="schema_version_id">
+          <option value="">Optional</option>
+          {% for schema_version in schema_versions %}
+            <option value="{{ schema_version.id }}">#{{ schema_version.id }} · {{ dataset_lookup.get(schema_version.dataset_id, 'Unknown') }} · v{{ schema_version.version_number }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit">Create dataset version</button>
+    </form>
+    {{ displays.entity_table(['ID', 'Dataset', 'Version'], dataset_version_rows, 'No dataset versions yet') }}
+  </section>
+
+  <section class="panel">
+    {{ displays.panel_header('Feature Store', 'Feature Set') }}
+    <form class="stacked-form" hx-post="/ui/feature-sets" hx-target="#dashboard-content" hx-swap="outerHTML">
+      {{ forms.text_input('name', 'Name', 'churn_features_v1', required=True) }}
+      <label>
+        <span>Dataset version</span>
+        <select name="dataset_version_id" required>
+          <option value="">Select version</option>
+          {% for version in dataset_versions %}
+            <option value="{{ version.id }}">#{{ version.id }} · {{ dataset_lookup.get(version.dataset_id, 'Unknown') }} · v{{ version.version_number }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {{ forms.textarea('feature_schema_json', 'Feature schema JSON', '{
+  "features": ["age", "balance", "tenure"]
+}', required=True, css_class='code-input') }}
+      <button type="submit">Create feature set</button>
+    </form>
+    {{ displays.entity_table(['ID', 'Name', 'Dataset version'], feature_rows, 'No feature sets yet') }}
+  </section>
+
+  <section class="panel">
+    {{ displays.panel_header('Experiments', 'Model Run') }}
+    <form class="stacked-form" hx-post="/ui/experiments" hx-target="#dashboard-content" hx-swap="outerHTML">
+      {{ forms.text_input('name', 'Name', 'xgboost_baseline', required=True) }}
+      <label>
+        <span>Feature set</span>
+        <select name="feature_set_id" required>
+          <option value="">Select feature set</option>
+          {% for feature_set in feature_sets %}
+            <option value="{{ feature_set.id }}">#{{ feature_set.id }} · {{ feature_set.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {{ forms.textarea('parameters_json', 'Parameters JSON', '{
+  "max_depth": 6,
+  "learning_rate": 0.1
+}', required=True, css_class='code-input') }}
+      {{ forms.textarea('metrics_json', 'Metrics JSON', '{
+  "auc": 0.91
+}', required=True, css_class='code-input') }}
+      <button type="submit">Create experiment</button>
+    </form>
+    {{ displays.entity_table(['ID', 'Name', 'Feature set'], experiment_rows, 'No experiments yet') }}
+  </section>
+</main>

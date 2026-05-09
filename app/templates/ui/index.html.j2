@@ -1,6 +1,6 @@
-{% extends "base.html" %}
+{% extends "base.html.j2" %}
 
-{% block title %}Metadata Atlas{% endblock %}
+{% block title %}Metadata Atlas{% endblock title %}
 
 {% block body %}
   <div class="page-shell">
@@ -21,6 +21,6 @@
       </div>
     </header>
 
-    {% include "ui/_dashboard_content.html" %}
+    {% include "ui/_dashboard_content.html.j2" %}
   </div>
-{% endblock %}
+{% endblock body %}

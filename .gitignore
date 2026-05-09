@@ -139,14 +139,11 @@ docker-compose.override.yml
 *.tmp
 *.temp
 
-# Alembic
-# Usually, you don't want to ignore alembic/versions/ as they contain migration scripts
-# But if you have generated files, you might want to ignore them
-# alembic/versions/*.py  # Uncomment if you want to ignore migration files
-
 # Data files (if generated)
 # data/*.csv  # Uncomment if data files are generated and shouldn't be committed
 # data/*.json  # Uncomment if data files are generated and shouldn't be committed
+data/
+docs/
 
 # Test data
 test/

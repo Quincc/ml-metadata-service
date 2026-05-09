@@ -1,0 +1,45 @@
+{% macro stat_card(label, value) -%}
+  <article class="stat-card">
+    <span class="stat-label">{{ label }}</span>
+    <strong>{{ value }}</strong>
+  </article>
+{%- endmacro %}
+
+{% macro panel_header(eyebrow, title, copy='') -%}
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">{{ eyebrow }}</p>
+      <h2>{{ title }}</h2>
+    </div>
+    {% if copy %}
+      <p class="panel-copy">{{ copy }}</p>
+    {% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro entity_table(headers, rows, empty_text='No data yet') -%}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          {% for header in headers %}
+            <th>{{ header }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            {% for cell in row %}
+              <td>{{ cell }}</td>
+            {% endfor %}
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="{{ headers|length }}" class="empty-row">{{ empty_text }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{%- endmacro %}

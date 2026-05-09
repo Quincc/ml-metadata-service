@@ -1,0 +1,27 @@
+{% macro text_input(name, label, placeholder='', value='', required=False, type='text') -%}
+  <label>
+    <span>{{ label }}</span>
+    <input type="{{ type }}" name="{{ name }}" placeholder="{{ placeholder }}" value="{{ value }}" {% if required %}required{% endif %} />
+  </label>
+{%- endmacro %}
+
+{% macro textarea(name, label, value='', placeholder='', required=False, css_class='') -%}
+  <label>
+    <span>{{ label }}</span>
+    <textarea name="{{ name }}" class="{{ css_class }}" placeholder="{{ placeholder }}" {% if required %}required{% endif %}>{{ value }}</textarea>
+  </label>
+{%- endmacro %}
+
+{% macro select(name, label, options, value_key='value', label_key='label', selected='', required=False, placeholder='Select option') -%}
+  <label>
+    <span>{{ label }}</span>
+    <select name="{{ name }}" {% if required %}required{% endif %}>
+      <option value="">{{ placeholder }}</option>
+      {% for option in options %}
+        {% set option_value = option[value_key] if option is mapping else option %}
+        {% set option_label = option[label_key] if option is mapping else option %}
+        <option value="{{ option_value }}" {% if option_value|string == selected|string %}selected{% endif %}>{{ option_label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+{%- endmacro %}
