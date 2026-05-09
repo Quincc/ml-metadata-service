@@ -32,6 +32,10 @@
           {% set label = 'version ' ~ dataset_version_lookup[node.entity_id] %}
         {% elif node.entity_type == 'feature_set' and feature_lookup.get(node.entity_id) %}
           {% set label = 'features: ' ~ feature_lookup[node.entity_id] %}
+        {% elif node.entity_type == 'experiment' and experiment_lookup.get(node.entity_id) %}
+          {% set label = 'exp: ' ~ experiment_lookup[node.entity_id] %}
+        {% elif node.entity_type == 'model' and model_lookup.get(node.entity_id) %}
+          {% set label = 'model: ' ~ model_lookup[node.entity_id] %}
         {% endif %}
         {% set _ = vis_nodes.append({
           'id': node.entity_type ~ ':' ~ node.entity_id,
@@ -84,7 +88,8 @@
               schema_version:  { color: { background: '#1e4d3a', border: '#34d399' } },
               dataset_version: { color: { background: '#4d3a1e', border: '#fbbf24' } },
               feature_set:     { color: { background: '#5c1e3a', border: '#f472b6' } },
-              experiment:      { color: { background: '#5c2a1e', border: '#fb7185' } }
+              experiment:      { color: { background: '#5c2a1e', border: '#fb7185' } },
+              model:           { color: { background: '#1e5c4d', border: '#2dd4bf' } }
             },
             physics: false,
             interaction: { hover: true, zoomView: true, dragView: true }

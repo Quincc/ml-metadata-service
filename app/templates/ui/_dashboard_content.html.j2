@@ -8,7 +8,8 @@
 
 {% set dataset_rows = [] %}
 {% for dataset in datasets[:6] %}
-  {% set _ = dataset_rows.append(['#' ~ dataset.id, dataset.name, source_lookup.get(dataset.source_id, 'Unknown')]) %}
+  {% set name_link = ('<a href="/ui/datasets/' ~ dataset.id ~ '">' ~ (dataset.name|e) ~ '</a>')|safe %}
+  {% set _ = dataset_rows.append(['#' ~ dataset.id, name_link, source_lookup.get(dataset.source_id, 'Unknown')]) %}
 {% endfor %}
 
 {% set schema_rows = [] %}
@@ -28,7 +29,14 @@
 
 {% set experiment_rows = [] %}
 {% for experiment in experiments[:6] %}
-  {% set _ = experiment_rows.append(['#' ~ experiment.id, experiment.name, feature_lookup.get(experiment.feature_set_id, 'Unknown')]) %}
+  {% set name_link = ('<a href="/ui/experiments/' ~ experiment.id ~ '">' ~ (experiment.name|e) ~ '</a>')|safe %}
+  {% set status_pill = ('<span class="status-pill status-' ~ experiment.status ~ '">' ~ experiment.status ~ '</span>')|safe %}
+  {% set _ = experiment_rows.append(['#' ~ experiment.id, name_link, feature_lookup.get(experiment.feature_set_id, 'Unknown'), status_pill]) %}
+{% endfor %}
+
+{% set model_rows = [] %}
+{% for m in models[:6] %}
+  {% set _ = model_rows.append(['#' ~ m.id, m.name, m.framework or '—', experiment_lookup.get(m.experiment_id, 'Unknown')]) %}
 {% endfor %}
 
 <main id="dashboard-content" class="dashboard-grid">
@@ -46,6 +54,7 @@
     {{ displays.stat_card('Dataset Versions', counts.dataset_versions) }}
     {{ displays.stat_card('Feature Sets', counts.feature_sets) }}
     {{ displays.stat_card('Experiments', counts.experiments) }}
+    {{ displays.stat_card('Models', counts.models) }}
   </section>
 
   <section class="panel">
@@ -172,6 +181,27 @@
 }', required=True, css_class='code-input') }}
       <button type="submit">Create experiment</button>
     </form>
-    {{ displays.entity_table(['ID', 'Name', 'Feature set'], experiment_rows, 'No experiments yet') }}
+    {{ displays.entity_table(['ID', 'Name', 'Feature set', 'Status'], experiment_rows, 'No experiments yet') }}
+  </section>
+
+  <section class="panel">
+    {{ displays.panel_header('Model Registry', 'Register Model') }}
+    <form class="stacked-form" hx-post="/ui/models" hx-target="#dashboard-content" hx-swap="outerHTML">
+      {{ forms.text_input('name', 'Name', 'churn_xgb_v1', required=True) }}
+      <label>
+        <span>Experiment</span>
+        <select name="experiment_id" required>
+          <option value="">Select experiment</option>
+          {% for experiment in experiments %}
+            <option value="{{ experiment.id }}">#{{ experiment.id }} · {{ experiment.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {{ forms.text_input('framework', 'Framework', 'xgboost') }}
+      {{ forms.text_input('version', 'Version', '1.0.0') }}
+      {{ forms.text_input('artifact_path', 'Artifact path', 's3://models/churn_xgb_v1.bin') }}
+      <button type="submit">Register model</button>
+    </form>
+    {{ displays.entity_table(['ID', 'Name', 'Framework', 'Experiment'], model_rows, 'No models yet') }}
   </section>
 </main>

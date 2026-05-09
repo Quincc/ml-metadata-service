@@ -1,0 +1,101 @@
+{% extends "base.html.j2" %}
+{% import "components/displays.html.j2" as displays %}
+
+{% block title %}{{ dataset.name }} · Metadata Atlas{% endblock title %}
+
+{% block body %}
+  <div class="page-shell">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <header class="hero">
+      <div>
+        <p class="eyebrow">
+          <a class="ghost-link" href="/ui">← Dashboard</a>
+          {% if dataset.deleted_at %}
+            <span class="status-pill deleted">Archived</span>
+          {% else %}
+            <span class="status-pill active">Active</span>
+          {% endif %}
+        </p>
+        <h1>{{ dataset.name }}</h1>
+        {% if dataset.description %}
+          <p class="hero-copy">{{ dataset.description }}</p>
+        {% endif %}
+        <p class="hero-copy">
+          Source:
+          {% if source %}
+            <strong>#{{ source.id }} · {{ source.name }}</strong> ({{ source.source_type }})
+            <span class="muted">{{ source.location }}</span>
+          {% else %}
+            <span class="muted">unknown</span>
+          {% endif %}
+        </p>
+      </div>
+      <div class="hero-actions">
+        {% if dataset.deleted_at %}
+          <form method="post" action="/ui/datasets/{{ dataset.id }}/restore">
+            <button type="submit">Restore dataset</button>
+          </form>
+        {% else %}
+          <form method="post" action="/ui/datasets/{{ dataset.id }}/delete"
+                onsubmit="return confirm('Archive dataset {{ dataset.name }}?');">
+            <button type="submit" class="danger">Archive dataset</button>
+          </form>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if message %}<div class="notice success">{{ message }}</div>{% endif %}
+    {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
+
+    {% set schema_rows = [] %}
+    {% for sv in schema_versions %}
+      {% set _ = schema_rows.append([
+        '#' ~ sv.id,
+        'v' ~ sv.version_number,
+        sv.local_created_at.strftime('%Y-%m-%d %H:%M') if sv.local_created_at else '—',
+        sv.deleted_at and 'archived' or 'active'
+      ]) %}
+    {% endfor %}
+
+    {% set version_rows = [] %}
+    {% for v in dataset_versions %}
+      {% set schema_label = 'schema #' ~ v.schema_version_id if v.schema_version_id else '—' %}
+      {% set _ = version_rows.append([
+        '#' ~ v.id,
+        'v' ~ v.version_number,
+        schema_label,
+        v.local_created_at.strftime('%Y-%m-%d %H:%M') if v.local_created_at else '—',
+        v.deleted_at and 'archived' or 'active'
+      ]) %}
+    {% endfor %}
+
+    {% set feature_rows = [] %}
+    {% for fs in feature_sets %}
+      {% set _ = feature_rows.append([
+        '#' ~ fs.id,
+        fs.name,
+        'dataset version #' ~ fs.dataset_version_id,
+        fs.local_created_at.strftime('%Y-%m-%d %H:%M') if fs.local_created_at else '—'
+      ]) %}
+    {% endfor %}
+
+    <section class="panel">
+      {{ displays.panel_header('Versioning', 'Schema versions') }}
+      {{ displays.entity_table(['ID', 'Version', 'Created', 'Status'], schema_rows, 'No schema versions yet') }}
+    </section>
+
+    <section class="panel">
+      {{ displays.panel_header('Versioning', 'Dataset versions') }}
+      {{ displays.entity_table(['ID', 'Version', 'Schema', 'Created', 'Status'], version_rows, 'No dataset versions yet') }}
+    </section>
+
+    <section class="panel">
+      {{ displays.panel_header('Feature Store', 'Feature sets built from this dataset') }}
+      {{ displays.entity_table(['ID', 'Name', 'Source version', 'Created'], feature_rows, 'No feature sets yet') }}
+    </section>
+
+    {% include "ui/_lineage_section.html.j2" %}
+  </div>
+{% endblock body %}

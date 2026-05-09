@@ -1,0 +1,96 @@
+{% extends "base.html.j2" %}
+{% import "components/displays.html.j2" as displays %}
+
+{% block title %}{{ experiment.name }} · Metadata Atlas{% endblock title %}
+
+{% block body %}
+  <div class="page-shell">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <header class="hero">
+      <div>
+        <p class="eyebrow">
+          <a class="ghost-link" href="/ui">← Dashboard</a>
+          {% if experiment.deleted_at %}
+            <span class="status-pill deleted">Archived</span>
+          {% else %}
+            <span class="status-pill active">Active</span>
+          {% endif %}
+          <span class="status-pill status-{{ experiment.status }}">{{ experiment.status }}</span>
+        </p>
+        <h1>{{ experiment.name }}</h1>
+        <p class="hero-copy">
+          Feature set:
+          {% if feature_set %}
+            <strong>#{{ feature_set.id }} · {{ feature_set.name }}</strong>
+          {% else %}
+            <span class="muted">unknown</span>
+          {% endif %}
+        </p>
+        {% if dataset_version %}
+          <p class="hero-copy">
+            Source:
+            <strong>{{ dataset.name if dataset else 'dataset' }}</strong> ·
+            v{{ dataset_version.version_number }}
+            {% if dataset %}
+              <a class="ghost-link" href="/ui/datasets/{{ dataset.id }}">open dataset →</a>
+            {% endif %}
+          </p>
+        {% endif %}
+      </div>
+      <div class="hero-actions">
+        {% if not experiment.deleted_at %}
+          <form method="post" action="/ui/experiments/{{ experiment.id }}/status" class="form-inline">
+            <select name="status">
+              {% for s in ['created', 'running', 'finished', 'failed'] %}
+                <option value="{{ s }}" {% if experiment.status == s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit">Update status</button>
+          </form>
+        {% endif %}
+        {% if experiment.deleted_at %}
+          <form method="post" action="/ui/experiments/{{ experiment.id }}/restore">
+            <button type="submit">Restore experiment</button>
+          </form>
+        {% else %}
+          <form method="post" action="/ui/experiments/{{ experiment.id }}/delete"
+                onsubmit="return confirm('Archive experiment {{ experiment.name }}?');">
+            <button type="submit" class="danger">Archive experiment</button>
+          </form>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if message %}<div class="notice success">{{ message }}</div>{% endif %}
+    {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
+
+    <section class="panel">
+      {{ displays.panel_header('Experiment', 'Parameters') }}
+      <pre class="code-block">{{ experiment.parameters_json | tojson(indent=2) }}</pre>
+    </section>
+
+    <section class="panel">
+      {{ displays.panel_header('Experiment', 'Metrics') }}
+      {% if experiment.metrics_json %}
+        <div class="metrics-grid">
+          {% for key, value in experiment.metrics_json.items() %}
+            <article class="stat-card">
+              <span class="stat-label">{{ key }}</span>
+              <strong>{{ value }}</strong>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted">No metrics recorded</p>
+      {% endif %}
+      <details>
+        <summary class="muted">Raw JSON</summary>
+        <pre class="code-block">{{ experiment.metrics_json | tojson(indent=2) }}</pre>
+      </details>
+    </section>
+
+    {% include "ui/_lineage_section.html.j2" %}
+  </div>
+{% endblock body %}
