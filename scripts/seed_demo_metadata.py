@@ -14,6 +14,7 @@ from app.models.datasource import DataSource
 from app.models.experiment import Experiment
 from app.models.feature_set import FeatureSet
 from app.models.lineage import LineageEdge
+from app.models.model import Model
 from app.models.schema_version import SchemaVersion
 
 
@@ -457,12 +458,14 @@ def ensure_feature_set(session, version_lookup, payload):
 def ensure_experiment(session, feature_lookup, payload):
     experiment = get_one_or_none(session, Experiment, Experiment.name == payload["name"], Experiment.deleted_at.is_(None))
     feature_set = feature_lookup[payload["feature_set_name"]]
+    status = payload.get("status", "finished")
     if experiment is None:
         experiment = Experiment(
             name=payload["name"],
             feature_set_id=feature_set.id,
             parameters_json=payload["parameters_json"],
             metrics_json=payload["metrics_json"],
+            status=status,
         )
         session.add(experiment)
         session.flush()
@@ -470,6 +473,7 @@ def ensure_experiment(session, feature_lookup, payload):
         experiment.feature_set_id = feature_set.id
         experiment.parameters_json = payload["parameters_json"]
         experiment.metrics_json = payload["metrics_json"]
+        experiment.status = status
     ensure_lineage_edge(
         session,
         from_entity_type="feature_set",
@@ -481,6 +485,99 @@ def ensure_experiment(session, feature_lookup, payload):
     return experiment
 
 
+DEMO_MODELS = [
+    {
+        "name": "titanic_logreg_v1",
+        "experiment_name": "titanic_logreg_baseline",
+        "framework": "sklearn",
+        "version": "1.0.0",
+        "artifact_path": "s3://demo-models/titanic/logreg_v1.pkl",
+        "description": "Baseline logistic regression for Titanic survival.",
+    },
+    {
+        "name": "titanic_rf_v1",
+        "experiment_name": "titanic_random_forest",
+        "framework": "sklearn",
+        "version": "1.1.0",
+        "artifact_path": "s3://demo-models/titanic/rf_v1.pkl",
+        "description": "Random forest with extended feature set.",
+    },
+    {
+        "name": "titanic_xgb_v1",
+        "experiment_name": "titanic_xgboost_tuned",
+        "framework": "xgboost",
+        "version": "1.2.0",
+        "artifact_path": "s3://demo-models/titanic/xgb_v1.json",
+        "description": "Tuned XGBoost classifier on cleaned Titanic features.",
+    },
+    {
+        "name": "house_prices_linreg_v1",
+        "experiment_name": "house_prices_linear_regression",
+        "framework": "sklearn",
+        "version": "1.0.0",
+        "artifact_path": "s3://demo-models/housing/linreg_v1.pkl",
+        "description": "Linear regression baseline for house prices.",
+    },
+    {
+        "name": "house_prices_lgbm_v1",
+        "experiment_name": "house_prices_lightgbm",
+        "framework": "lightgbm",
+        "version": "1.0.1",
+        "artifact_path": "s3://demo-models/housing/lgbm_v1.bin",
+        "description": "LightGBM regressor with engineered features.",
+    },
+    {
+        "name": "churn_logreg_v1",
+        "experiment_name": "churn_logreg_baseline",
+        "framework": "sklearn",
+        "version": "1.0.0",
+        "artifact_path": "s3://demo-models/churn/logreg_v1.pkl",
+        "description": "Baseline logistic regression for telecom churn.",
+    },
+    {
+        "name": "churn_catboost_v1",
+        "experiment_name": "churn_catboost_enriched",
+        "framework": "catboost",
+        "version": "1.0.0",
+        "artifact_path": "s3://demo-models/churn/catboost_v1.cbm",
+        "description": "CatBoost on enriched churn features.",
+    },
+]
+
+
+def ensure_model(session, experiment_lookup, payload):
+    model = get_one_or_none(session, Model, Model.name == payload["name"], Model.deleted_at.is_(None))
+    experiment = experiment_lookup.get(payload["experiment_name"])
+    if experiment is None:
+        return None
+    if model is None:
+        model = Model(
+            name=payload["name"],
+            experiment_id=experiment.id,
+            framework=payload.get("framework"),
+            version=payload.get("version"),
+            artifact_path=payload.get("artifact_path"),
+            description=payload.get("description"),
+        )
+        session.add(model)
+        session.flush()
+    else:
+        model.experiment_id = experiment.id
+        model.framework = payload.get("framework")
+        model.version = payload.get("version")
+        model.artifact_path = payload.get("artifact_path")
+        model.description = payload.get("description")
+    ensure_lineage_edge(
+        session,
+        from_entity_type="experiment",
+        from_entity_id=experiment.id,
+        to_entity_type="model",
+        to_entity_id=model.id,
+        relation_type="produces_model",
+    )
+    return model
+
+
 def seed_demo_metadata() -> dict[str, int]:
     stats = {
         "sources": 0,
@@ -489,6 +586,7 @@ def seed_demo_metadata() -> dict[str, int]:
         "dataset_versions": 0,
         "feature_sets": 0,
         "experiments": 0,
+        "models": 0,
         "lineage_edges": 0,
     }
 
@@ -516,6 +614,17 @@ def seed_demo_metadata() -> dict[str, int]:
             for experiment_payload in catalog_item["experiments"]:
                 ensure_experiment(session, feature_lookup, experiment_payload)
 
+        session.flush()
+
+        experiment_lookup = {
+            exp.name: exp
+            for exp in session.scalars(
+                select(Experiment).where(Experiment.deleted_at.is_(None))
+            ).all()
+        }
+        for model_payload in DEMO_MODELS:
+            ensure_model(session, experiment_lookup, model_payload)
+
         session.commit()
 
         stats["sources"] = session.scalar(select(func.count()).select_from(DataSource).where(DataSource.deleted_at.is_(None))) or 0
@@ -524,6 +633,7 @@ def seed_demo_metadata() -> dict[str, int]:
         stats["dataset_versions"] = session.scalar(select(func.count()).select_from(DatasetVersion).where(DatasetVersion.deleted_at.is_(None))) or 0
         stats["feature_sets"] = session.scalar(select(func.count()).select_from(FeatureSet).where(FeatureSet.deleted_at.is_(None))) or 0
         stats["experiments"] = session.scalar(select(func.count()).select_from(Experiment).where(Experiment.deleted_at.is_(None))) or 0
+        stats["models"] = session.scalar(select(func.count()).select_from(Model).where(Model.deleted_at.is_(None))) or 0
         stats["lineage_edges"] = session.scalar(select(func.count()).select_from(LineageEdge).where(LineageEdge.deleted_at.is_(None))) or 0
 
     return stats

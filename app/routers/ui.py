@@ -63,13 +63,27 @@ def _parse_optional_int(value: str) -> int | None:
 
 
 def _load_dashboard_data(db: DBSession) -> dict[str, Any]:
-    sources = db.scalars(select(DataSource).order_by(DataSource.id.desc())).all()
-    datasets = db.scalars(select(Dataset).order_by(Dataset.id.desc())).all()
-    schema_versions = db.scalars(select(SchemaVersion).order_by(SchemaVersion.id.desc())).all()
-    dataset_versions = db.scalars(select(DatasetVersion).order_by(DatasetVersion.id.desc())).all()
-    feature_sets = db.scalars(select(FeatureSet).order_by(FeatureSet.id.desc())).all()
-    experiments = db.scalars(select(Experiment).order_by(Experiment.id.desc())).all()
-    models = db.scalars(select(Model).order_by(Model.id.desc())).all()
+    sources = db.scalars(
+        select(DataSource).where(DataSource.deleted_at.is_(None)).order_by(DataSource.id.desc())
+    ).all()
+    datasets = db.scalars(
+        select(Dataset).where(Dataset.deleted_at.is_(None)).order_by(Dataset.id.desc())
+    ).all()
+    schema_versions = db.scalars(
+        select(SchemaVersion).where(SchemaVersion.deleted_at.is_(None)).order_by(SchemaVersion.id.desc())
+    ).all()
+    dataset_versions = db.scalars(
+        select(DatasetVersion).where(DatasetVersion.deleted_at.is_(None)).order_by(DatasetVersion.id.desc())
+    ).all()
+    feature_sets = db.scalars(
+        select(FeatureSet).where(FeatureSet.deleted_at.is_(None)).order_by(FeatureSet.id.desc())
+    ).all()
+    experiments = db.scalars(
+        select(Experiment).where(Experiment.deleted_at.is_(None)).order_by(Experiment.id.desc())
+    ).all()
+    models = db.scalars(
+        select(Model).where(Model.deleted_at.is_(None)).order_by(Model.id.desc())
+    ).all()
 
     return {
         "sources": sources,
@@ -591,6 +605,110 @@ def update_experiment_status_ui(
     experiment.status = status
     db.commit()
     return RedirectResponse(url=f"/ui/experiments/{experiment_id}", status_code=303)
+
+
+_ENTITY_MODELS = {
+    "source": DataSource,
+    "dataset": Dataset,
+    "schema_version": SchemaVersion,
+    "dataset_version": DatasetVersion,
+    "feature_set": FeatureSet,
+    "experiment": Experiment,
+    "model": Model,
+}
+
+
+def _archived_rows(db: DBSession) -> dict[str, list[dict]]:
+    def fmt(dt) -> str:
+        return dt.strftime("%Y-%m-%d %H:%M") if dt else "—"
+
+    sources = db.scalars(
+        select(DataSource).where(DataSource.deleted_at.is_not(None)).order_by(DataSource.id.desc())
+    ).all()
+    datasets = db.scalars(
+        select(Dataset).where(Dataset.deleted_at.is_not(None)).order_by(Dataset.id.desc())
+    ).all()
+    schema_versions = db.scalars(
+        select(SchemaVersion).where(SchemaVersion.deleted_at.is_not(None)).order_by(SchemaVersion.id.desc())
+    ).all()
+    dataset_versions = db.scalars(
+        select(DatasetVersion).where(DatasetVersion.deleted_at.is_not(None)).order_by(DatasetVersion.id.desc())
+    ).all()
+    feature_sets = db.scalars(
+        select(FeatureSet).where(FeatureSet.deleted_at.is_not(None)).order_by(FeatureSet.id.desc())
+    ).all()
+    experiments = db.scalars(
+        select(Experiment).where(Experiment.deleted_at.is_not(None)).order_by(Experiment.id.desc())
+    ).all()
+    models = db.scalars(
+        select(Model).where(Model.deleted_at.is_not(None)).order_by(Model.id.desc())
+    ).all()
+
+    return {
+        "sources": [
+            {"type": "source", "id": s.id, "cells": [f"#{s.id}", s.name, s.source_type], "deleted_at": fmt(s.local_deleted_at)}
+            for s in sources
+        ],
+        "datasets": [
+            {"type": "dataset", "id": d.id, "cells": [f"#{d.id}", d.name, f"#{d.source_id}"], "deleted_at": fmt(d.local_deleted_at)}
+            for d in datasets
+        ],
+        "schema_versions": [
+            {"type": "schema_version", "id": sv.id, "cells": [f"#{sv.id}", f"#{sv.dataset_id}", f"v{sv.version_number}"], "deleted_at": fmt(sv.local_deleted_at)}
+            for sv in schema_versions
+        ],
+        "dataset_versions": [
+            {"type": "dataset_version", "id": v.id, "cells": [f"#{v.id}", f"#{v.dataset_id}", f"v{v.version_number}"], "deleted_at": fmt(v.local_deleted_at)}
+            for v in dataset_versions
+        ],
+        "feature_sets": [
+            {"type": "feature_set", "id": fs.id, "cells": [f"#{fs.id}", fs.name, f"#{fs.dataset_version_id}"], "deleted_at": fmt(fs.local_deleted_at)}
+            for fs in feature_sets
+        ],
+        "experiments": [
+            {"type": "experiment", "id": e.id, "cells": [f"#{e.id}", e.name, f"#{e.feature_set_id}"], "deleted_at": fmt(e.local_deleted_at)}
+            for e in experiments
+        ],
+        "models": [
+            {"type": "model", "id": m.id, "cells": [f"#{m.id}", m.name, f"#{m.experiment_id}"], "deleted_at": fmt(m.local_deleted_at)}
+            for m in models
+        ],
+    }
+
+
+@router.get("/archive", response_class=HTMLResponse)
+def archive_view(
+    request: Request,
+    db: DBSession,
+    message: str | None = None,
+    error: str | None = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "ui/archive.html.j2",
+        {
+            "request": request,
+            "archived": _archived_rows(db),
+            "message": message,
+            "error": error,
+        },
+    )
+
+
+@router.post("/archive/restore")
+def archive_restore(
+    db: DBSession,
+    entity_type: str = Form(...),
+    entity_id: int = Form(...),
+) -> RedirectResponse:
+    model_cls = _ENTITY_MODELS.get(entity_type)
+    if model_cls is None:
+        return RedirectResponse(url="/ui/archive", status_code=303)
+    obj = db.get(model_cls, entity_id)
+    if obj is None or obj.deleted_at is None:
+        return RedirectResponse(url="/ui/archive", status_code=303)
+    obj.restore()
+    db.commit()
+    return RedirectResponse(url="/ui/archive", status_code=303)
 
 
 @router.post("/experiments/{experiment_id}/restore")

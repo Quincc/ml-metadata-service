@@ -2,40 +2,40 @@
 {% import "components/displays.html.j2" as displays %}
 
 {% set source_rows = [] %}
-{% for source in sources[:6] %}
+{% for source in sources %}
   {% set _ = source_rows.append(['#' ~ source.id, source.name, source.source_type, source.location]) %}
 {% endfor %}
 
 {% set dataset_rows = [] %}
-{% for dataset in datasets[:6] %}
+{% for dataset in datasets %}
   {% set name_link = ('<a href="/ui/datasets/' ~ dataset.id ~ '">' ~ (dataset.name|e) ~ '</a>')|safe %}
   {% set _ = dataset_rows.append(['#' ~ dataset.id, name_link, source_lookup.get(dataset.source_id, 'Unknown')]) %}
 {% endfor %}
 
 {% set schema_rows = [] %}
-{% for schema_version in schema_versions[:6] %}
+{% for schema_version in schema_versions %}
   {% set _ = schema_rows.append(['#' ~ schema_version.id, dataset_lookup.get(schema_version.dataset_id, 'Unknown'), 'v' ~ schema_version.version_number]) %}
 {% endfor %}
 
 {% set dataset_version_rows = [] %}
-{% for version in dataset_versions[:6] %}
+{% for version in dataset_versions %}
   {% set _ = dataset_version_rows.append(['#' ~ version.id, dataset_lookup.get(version.dataset_id, 'Unknown'), 'v' ~ version.version_number]) %}
 {% endfor %}
 
 {% set feature_rows = [] %}
-{% for feature_set in feature_sets[:6] %}
+{% for feature_set in feature_sets %}
   {% set _ = feature_rows.append(['#' ~ feature_set.id, feature_set.name, dataset_version_lookup.get(feature_set.dataset_version_id, 'Unknown')]) %}
 {% endfor %}
 
 {% set experiment_rows = [] %}
-{% for experiment in experiments[:6] %}
+{% for experiment in experiments %}
   {% set name_link = ('<a href="/ui/experiments/' ~ experiment.id ~ '">' ~ (experiment.name|e) ~ '</a>')|safe %}
   {% set status_pill = ('<span class="status-pill status-' ~ experiment.status ~ '">' ~ experiment.status ~ '</span>')|safe %}
   {% set _ = experiment_rows.append(['#' ~ experiment.id, name_link, feature_lookup.get(experiment.feature_set_id, 'Unknown'), status_pill]) %}
 {% endfor %}
 
 {% set model_rows = [] %}
-{% for m in models[:6] %}
+{% for m in models %}
   {% set _ = model_rows.append(['#' ~ m.id, m.name, m.framework or '—', experiment_lookup.get(m.experiment_id, 'Unknown')]) %}
 {% endfor %}
 

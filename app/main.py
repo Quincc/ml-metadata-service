@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 
 import app.models  # noqa: F401
 from app.db import wait_for_database
+from app.exceptions import register_exception_handlers
 from app.routers.dataset import router as dataset_router
 from app.routers.datasource import router as datasource_router
 from app.routers.experiment import router as experiment_router
@@ -27,6 +28,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+register_exception_handlers(app)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

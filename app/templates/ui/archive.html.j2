@@ -1,0 +1,72 @@
+{% extends "base.html.j2" %}
+{% import "components/displays.html.j2" as displays %}
+
+{% block title %}Archive · Metadata Atlas{% endblock title %}
+
+{% block body %}
+  <div class="page-shell">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <header class="hero">
+      <div>
+        <p class="eyebrow">
+          <a class="ghost-link" href="/ui">← Dashboard</a>
+        </p>
+        <h1>Archive</h1>
+        <p class="hero-copy">
+          Здесь собраны все мягко удалённые объекты. Их можно восстановить или оставить для истории lineage.
+        </p>
+      </div>
+    </header>
+
+    {% if message %}<div class="notice success">{{ message }}</div>{% endif %}
+    {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
+
+    {% macro restore_form(entity_type, entity_id) %}
+      <form method="post" action="/ui/archive/restore" style="display:inline">
+        <input type="hidden" name="entity_type" value="{{ entity_type }}" />
+        <input type="hidden" name="entity_id" value="{{ entity_id }}" />
+        <button type="submit">Restore</button>
+      </form>
+    {% endmacro %}
+
+    {% macro archive_section(title, items, columns) %}
+      <section class="panel">
+        {{ displays.panel_header('Archived', title) }}
+        {% if items %}
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  {% for col in columns %}<th>{{ col }}</th>{% endfor %}
+                  <th>Deleted at</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in items %}
+                  <tr>
+                    {% for cell in row.cells %}<td>{{ cell }}</td>{% endfor %}
+                    <td>{{ row.deleted_at }}</td>
+                    <td>{{ restore_form(row.type, row.id) }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="muted">Empty</p>
+        {% endif %}
+      </section>
+    {% endmacro %}
+
+    {{ archive_section('Sources', archived.sources, ['ID', 'Name', 'Type']) }}
+    {{ archive_section('Datasets', archived.datasets, ['ID', 'Name', 'Source']) }}
+    {{ archive_section('Schema versions', archived.schema_versions, ['ID', 'Dataset', 'Version']) }}
+    {{ archive_section('Dataset versions', archived.dataset_versions, ['ID', 'Dataset', 'Version']) }}
+    {{ archive_section('Feature sets', archived.feature_sets, ['ID', 'Name', 'Dataset version']) }}
+    {{ archive_section('Experiments', archived.experiments, ['ID', 'Name', 'Feature set']) }}
+    {{ archive_section('Models', archived.models, ['ID', 'Name', 'Experiment']) }}
+  </div>
+{% endblock body %}
