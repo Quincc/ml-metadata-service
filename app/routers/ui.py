@@ -2,7 +2,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -12,6 +12,7 @@ from app.models.dataset_version import DatasetVersion
 from app.models.datasource import DataSource
 from app.models.experiment import Experiment
 from app.models.feature_set import FeatureSet
+from app.models.model import Model
 from app.routers import DBSession
 from app.models.schema_version import SchemaVersion
 from app.schemas.lineage import LineageGraph, LineageNode, LineageRead
@@ -28,6 +29,7 @@ LINEAGE_ENTITY_TYPES = [
     "dataset_version",
     "feature_set",
     "experiment",
+    "model",
 ]
 
 SOURCE_TYPE_OPTIONS = [
@@ -67,6 +69,7 @@ def _load_dashboard_data(db: DBSession) -> dict[str, Any]:
     dataset_versions = db.scalars(select(DatasetVersion).order_by(DatasetVersion.id.desc())).all()
     feature_sets = db.scalars(select(FeatureSet).order_by(FeatureSet.id.desc())).all()
     experiments = db.scalars(select(Experiment).order_by(Experiment.id.desc())).all()
+    models = db.scalars(select(Model).order_by(Model.id.desc())).all()
 
     return {
         "sources": sources,
@@ -75,6 +78,7 @@ def _load_dashboard_data(db: DBSession) -> dict[str, Any]:
         "dataset_versions": dataset_versions,
         "feature_sets": feature_sets,
         "experiments": experiments,
+        "models": models,
         "counts": {
             "sources": len(sources),
             "datasets": len(datasets),
@@ -82,6 +86,7 @@ def _load_dashboard_data(db: DBSession) -> dict[str, Any]:
             "dataset_versions": len(dataset_versions),
             "feature_sets": len(feature_sets),
             "experiments": len(experiments),
+            "models": len(models),
         },
         "source_lookup": {source.id: source.name for source in sources},
         "dataset_lookup": {dataset.id: dataset.name for dataset in datasets},
@@ -94,6 +99,8 @@ def _load_dashboard_data(db: DBSession) -> dict[str, Any]:
             for version in dataset_versions
         },
         "feature_lookup": {feature_set.id: feature_set.name for feature_set in feature_sets},
+        "experiment_lookup": {experiment.id: experiment.name for experiment in experiments},
+        "model_lookup": {model.id: model.name for model in models},
         "lineage_entity_types": LINEAGE_ENTITY_TYPES,
         "source_type_options": SOURCE_TYPE_OPTIONS,
     }
@@ -366,6 +373,44 @@ def create_experiment_ui(
         return _render_dashboard(request, db, error=_handle_ui_error(db, exc))
 
 
+@router.post("/models", response_class=HTMLResponse)
+def create_model_ui(
+    request: Request,
+    db: DBSession,
+    name: str = Form(...),
+    experiment_id: int = Form(...),
+    framework: str = Form(""),
+    version: str = Form(""),
+    artifact_path: str = Form(""),
+) -> HTMLResponse:
+    experiment = db.get(Experiment, experiment_id)
+    if experiment is None:
+        return _render_dashboard(request, db, error="Selected experiment does not exist")
+
+    try:
+        model = Model(
+            name=name,
+            experiment_id=experiment_id,
+            framework=framework or None,
+            version=version or None,
+            artifact_path=artifact_path or None,
+        )
+        db.add(model)
+        db.flush()
+        LineageService.create(
+            db=db,
+            from_entity_type="experiment",
+            from_entity_id=experiment_id,
+            to_entity_type="model",
+            to_entity_id=model.id,
+            relation_type="produces_model",
+        )
+        _commit_or_rollback(db)
+        return _render_dashboard(request, db, message=f"Model '{name}' registered successfully")
+    except (ValueError, IntegrityError) as exc:
+        return _render_dashboard(request, db, error=_handle_ui_error(db, exc))
+
+
 @router.get("/lineage", response_class=HTMLResponse)
 def view_lineage_ui(
     request: Request,
@@ -398,3 +443,162 @@ def view_lineage_ui(
         selected_entity_id=entity_id,
         partial="lineage",
     )
+
+
+def _build_lineage_graph(db: DBSession, entity_type: str, entity_id: int) -> LineageGraph:
+    nodes, edges = LineageService.get_graph(db=db, entity_type=entity_type, entity_id=entity_id)
+    return LineageGraph(
+        root_entity_type=entity_type,
+        root_entity_id=entity_id,
+        nodes=[LineageNode(entity_type=node_type, entity_id=node_id) for node_type, node_id in nodes],
+        edges=[LineageRead.model_validate(edge) for edge in edges],
+    )
+
+
+@router.get("/datasets/{dataset_id}", response_class=HTMLResponse)
+def dataset_detail(
+    request: Request,
+    db: DBSession,
+    dataset_id: int,
+    message: str | None = None,
+    error: str | None = None,
+) -> HTMLResponse:
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None:
+        return _render_dashboard(
+            request, db, error=f"Dataset #{dataset_id} not found", partial="full"
+        )
+
+    schema_versions = db.scalars(
+        select(SchemaVersion)
+        .where(SchemaVersion.dataset_id == dataset_id)
+        .order_by(SchemaVersion.version_number.desc())
+    ).all()
+    dataset_versions = db.scalars(
+        select(DatasetVersion)
+        .where(DatasetVersion.dataset_id == dataset_id)
+        .order_by(DatasetVersion.version_number.desc())
+    ).all()
+    feature_sets = []
+    if dataset_versions:
+        version_ids = [v.id for v in dataset_versions]
+        feature_sets = db.scalars(
+            select(FeatureSet)
+            .where(FeatureSet.dataset_version_id.in_(version_ids))
+            .order_by(FeatureSet.id.desc())
+        ).all()
+    source = db.get(DataSource, dataset.source_id)
+    lineage_graph = _build_lineage_graph(db, "dataset", dataset_id)
+
+    context = {
+        "request": request,
+        "dataset": dataset,
+        "source": source,
+        "schema_versions": schema_versions,
+        "dataset_versions": dataset_versions,
+        "feature_sets": feature_sets,
+        "message": message,
+        "error": error,
+        "lineage_graph": lineage_graph,
+        "lineage_error": None,
+        "selected_entity_type": "dataset",
+        "selected_entity_id": dataset_id,
+        **_load_dashboard_data(db),
+    }
+    return templates.TemplateResponse("ui/dataset_detail.html.j2", context)
+
+
+@router.post("/datasets/{dataset_id}/delete")
+def delete_dataset_ui(db: DBSession, dataset_id: int) -> RedirectResponse:
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if dataset.deleted_at is None:
+        dataset.mark_deleted()
+        db.commit()
+    return RedirectResponse(url=f"/ui/datasets/{dataset_id}", status_code=303)
+
+
+@router.post("/datasets/{dataset_id}/restore")
+def restore_dataset_ui(db: DBSession, dataset_id: int) -> RedirectResponse:
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if dataset.deleted_at is not None:
+        dataset.restore()
+        db.commit()
+    return RedirectResponse(url=f"/ui/datasets/{dataset_id}", status_code=303)
+
+
+@router.get("/experiments/{experiment_id}", response_class=HTMLResponse)
+def experiment_detail(
+    request: Request,
+    db: DBSession,
+    experiment_id: int,
+    message: str | None = None,
+    error: str | None = None,
+) -> HTMLResponse:
+    experiment = db.get(Experiment, experiment_id)
+    if experiment is None:
+        return _render_dashboard(
+            request, db, error=f"Experiment #{experiment_id} not found", partial="full"
+        )
+
+    feature_set = db.get(FeatureSet, experiment.feature_set_id)
+    dataset_version = (
+        db.get(DatasetVersion, feature_set.dataset_version_id) if feature_set else None
+    )
+    dataset = db.get(Dataset, dataset_version.dataset_id) if dataset_version else None
+    lineage_graph = _build_lineage_graph(db, "experiment", experiment_id)
+
+    context = {
+        "request": request,
+        "experiment": experiment,
+        "feature_set": feature_set,
+        "dataset_version": dataset_version,
+        "dataset": dataset,
+        "message": message,
+        "error": error,
+        "lineage_graph": lineage_graph,
+        "lineage_error": None,
+        "selected_entity_type": "experiment",
+        "selected_entity_id": experiment_id,
+        **_load_dashboard_data(db),
+    }
+    return templates.TemplateResponse("ui/experiment_detail.html.j2", context)
+
+
+@router.post("/experiments/{experiment_id}/delete")
+def delete_experiment_ui(db: DBSession, experiment_id: int) -> RedirectResponse:
+    experiment = db.get(Experiment, experiment_id)
+    if experiment is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if experiment.deleted_at is None:
+        experiment.mark_deleted()
+        db.commit()
+    return RedirectResponse(url=f"/ui/experiments/{experiment_id}", status_code=303)
+
+
+@router.post("/experiments/{experiment_id}/status")
+def update_experiment_status_ui(
+    db: DBSession, experiment_id: int, status: str = Form(...)
+) -> RedirectResponse:
+    if status not in ("created", "running", "finished", "failed"):
+        return RedirectResponse(url=f"/ui/experiments/{experiment_id}", status_code=303)
+    experiment = db.get(Experiment, experiment_id)
+    if experiment is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    experiment.status = status
+    db.commit()
+    return RedirectResponse(url=f"/ui/experiments/{experiment_id}", status_code=303)
+
+
+@router.post("/experiments/{experiment_id}/restore")
+def restore_experiment_ui(db: DBSession, experiment_id: int) -> RedirectResponse:
+    experiment = db.get(Experiment, experiment_id)
+    if experiment is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if experiment.deleted_at is not None:
+        experiment.restore()
+        db.commit()
+    return RedirectResponse(url=f"/ui/experiments/{experiment_id}", status_code=303)

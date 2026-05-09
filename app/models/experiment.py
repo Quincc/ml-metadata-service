@@ -9,8 +9,12 @@ from app.db import Base
 from app.models.common import TimeStampMixin
 
 
+EXPERIMENT_STATUSES = ("created", "running", "finished", "failed")
+
+
 if TYPE_CHECKING:
     from app.models.feature_set import FeatureSet
+    from app.models.model import Model
 
 
 class Experiment(TimeStampMixin, Base):
@@ -23,5 +27,13 @@ class Experiment(TimeStampMixin, Base):
     feature_set_id: Mapped[int] = mapped_column(ForeignKey('feature_sets.id'), nullable=False, comment='Набор признаков')
     parameters_json: Mapped[dict] = mapped_column(JSON, nullable=False, comment='JSON параметров эксперимента')
     metrics_json: Mapped[dict] = mapped_column(JSON, nullable=False, comment='JSON метрик эксперимента')
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="finished",
+        server_default="finished",
+        comment='Статус эксперимента: created/running/finished/failed',
+    )
 
     feature_set: Mapped['FeatureSet'] = relationship(back_populates='experiments')
+    models: Mapped[list['Model']] = relationship(back_populates='experiment')

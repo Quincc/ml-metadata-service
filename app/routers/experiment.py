@@ -4,7 +4,7 @@ from sqlalchemy import select
 from app.models.experiment import Experiment
 from app.models.feature_set import FeatureSet
 from app.routers import DBSession
-from app.schemas.experiment import ExperimentCreate, ExperimentRead
+from app.schemas.experiment import ExperimentCreate, ExperimentRead, ExperimentStatusUpdate
 from app.services.lineage_service import LineageService
 
 
@@ -41,6 +41,21 @@ def list_experiments(request: Request, db: DBSession) -> list[Experiment]:
     """Список доступных экспериментов."""
     statement = select(Experiment).where(Experiment.deleted_at.is_(None)).order_by(Experiment.id)
     return db.scalars(statement).all()
+
+
+@router.patch('/{experiment_id}/status', response_model=ExperimentRead)
+def update_experiment_status(
+    request: Request, db: DBSession, experiment_id: int, payload: ExperimentStatusUpdate
+) -> Experiment:
+    """Смена статуса эксперимента."""
+    experiment = db.get(Experiment, experiment_id)
+    if experiment is None or experiment.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Experiment not found')
+
+    experiment.status = payload.status
+    db.commit()
+    db.refresh(experiment)
+    return experiment
 
 
 @router.delete('/{experiment_id}', response_model=ExperimentRead)

@@ -1,8 +1,11 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from app.schemas.common import TimeStampResponseSchema
+
+
+ExperimentStatus = Literal["created", "running", "finished", "failed"]
 
 
 class ExperimentCreate(BaseModel):
@@ -12,9 +15,16 @@ class ExperimentCreate(BaseModel):
     feature_set_id: int = Field(..., title='ID набора признаков')
     parameters_json: dict[str, Any] = Field(..., title='JSON параметров эксперимента')
     metrics_json: dict[str, Any] = Field(..., title='JSON метрик эксперимента')
+    status: ExperimentStatus = Field(default='finished', title='Статус эксперимента')
 
 
 class ExperimentRead(ExperimentCreate, TimeStampResponseSchema):
     """Схема ответа с информацией об эксперименте."""
 
     id: int = Field(..., title='ID эксперимента')
+
+
+class ExperimentStatusUpdate(BaseModel):
+    """Смена статуса эксперимента."""
+
+    status: ExperimentStatus = Field(..., title='Новый статус')
