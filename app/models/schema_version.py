@@ -8,7 +8,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 from app.models.common import TimeStampMixin
 
-
 if TYPE_CHECKING:
     from app.models.dataset import Dataset
     from app.models.dataset_version import DatasetVersion
@@ -25,5 +24,5 @@ class SchemaVersion(TimeStampMixin, Base):
     version_number: Mapped[int] = mapped_column(nullable=False, comment='Номер версии схемы')
     schema_json: Mapped[dict] = mapped_column(JSON, nullable=False, comment='JSON-описание схемы')
 
-    dataset: Mapped['Dataset'] = relationship(back_populates='schema_versions')
-    dataset_versions: Mapped[list['DatasetVersion']] = relationship(back_populates='schema_version')
+    dataset: Mapped[Dataset] = relationship(back_populates='schema_versions')
+    dataset_versions: Mapped[list[DatasetVersion]] = relationship(back_populates='schema_version')

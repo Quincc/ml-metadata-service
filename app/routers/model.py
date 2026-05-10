@@ -7,7 +7,6 @@ from app.routers import DBSession
 from app.schemas.model import ModelCreate, ModelRead
 from app.services.lineage_service import LineageService
 
-
 router = APIRouter(prefix='/models', tags=['models'])
 
 

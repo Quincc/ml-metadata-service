@@ -8,7 +8,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 from app.models.common import TimeStampMixin
 
-
 if TYPE_CHECKING:
     from app.models.experiment import Experiment
 
@@ -30,4 +29,4 @@ class Model(TimeStampMixin, Base):
         comment='Эксперимент, который произвёл модель',
     )
 
-    experiment: Mapped['Experiment'] = relationship(back_populates='models')
+    experiment: Mapped[Experiment] = relationship(back_populates='models')

@@ -6,7 +6,6 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-
 LOCAL_TIMEZONE = ZoneInfo("Asia/Yekaterinburg")
 
 

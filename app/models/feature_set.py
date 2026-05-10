@@ -8,7 +8,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 from app.models.common import TimeStampMixin
 
-
 if TYPE_CHECKING:
     from app.models.dataset_version import DatasetVersion
     from app.models.experiment import Experiment
@@ -28,5 +27,5 @@ class FeatureSet(TimeStampMixin, Base):
     )
     feature_schema_json: Mapped[dict] = mapped_column(JSON, nullable=False, comment='JSON-описание признаков')
 
-    dataset_version: Mapped['DatasetVersion'] = relationship(back_populates='feature_sets')
-    experiments: Mapped[list['Experiment']] = relationship(back_populates='feature_set')
+    dataset_version: Mapped[DatasetVersion] = relationship(back_populates='feature_sets')
+    experiments: Mapped[list[Experiment]] = relationship(back_populates='feature_set')

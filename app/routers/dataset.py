@@ -1,8 +1,6 @@
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from sqlalchemy import exists, select
 
-from app.services.schema_inference import infer_schema_from_csv
-
 from app.models.dataset import Dataset
 from app.models.dataset_version import DatasetVersion
 from app.models.datasource import DataSource
@@ -13,8 +11,8 @@ from app.schemas.dataset import DatasetCreate, DatasetRead
 from app.schemas.dataset_version import DatasetVersionCreate, DatasetVersionRead
 from app.schemas.schema_version import SchemaVersionCreate, SchemaVersionRead
 from app.services.lineage_service import LineageService
+from app.services.schema_inference import infer_schema_from_csv
 from app.services.versioning_service import VersioningService
-
 
 router = APIRouter(prefix='/datasets', tags=['datasets'])
 

@@ -17,7 +17,6 @@ from app.models.lineage import LineageEdge
 from app.models.model import Model
 from app.models.schema_version import SchemaVersion
 
-
 DEMO_CATALOG = [
     {
         "source": {

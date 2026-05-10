@@ -8,7 +8,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 from app.models.common import TimeStampMixin
 
-
 if TYPE_CHECKING:
     from app.models.dataset import Dataset
 
@@ -23,4 +22,4 @@ class DataSource(TimeStampMixin, Base):
     source_type: Mapped[str] = mapped_column(String(100), nullable=False, comment='Тип источника данных')
     location: Mapped[str] = mapped_column(String(500), nullable=False, comment='Путь или адрес источника')
 
-    datasets: Mapped[list['Dataset']] = relationship(back_populates='source')
+    datasets: Mapped[list[Dataset]] = relationship(back_populates='source')

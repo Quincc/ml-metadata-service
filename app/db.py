@@ -7,7 +7,6 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.settings import get_settings
 
-
 _settings = get_settings()
 DATABASE_URL = _settings.database_url
 

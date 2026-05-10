@@ -5,7 +5,6 @@ from typing import Any
 
 import pandas as pd
 
-
 _DTYPE_TO_TYPE = {
     "int": "int",
     "float": "float",

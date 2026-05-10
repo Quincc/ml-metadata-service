@@ -8,7 +8,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 from app.models.common import TimeStampMixin
 
-
 if TYPE_CHECKING:
     from app.models.dataset import Dataset
     from app.models.feature_set import FeatureSet
@@ -30,6 +29,6 @@ class DatasetVersion(TimeStampMixin, Base):
         comment='Связанная версия схемы',
     )
 
-    dataset: Mapped['Dataset'] = relationship(back_populates='versions')
-    schema_version: Mapped['SchemaVersion | None'] = relationship(back_populates='dataset_versions')
-    feature_sets: Mapped[list['FeatureSet']] = relationship(back_populates='dataset_version')
+    dataset: Mapped[Dataset] = relationship(back_populates='versions')
+    schema_version: Mapped[SchemaVersion | None] = relationship(back_populates='dataset_versions')
+    feature_sets: Mapped[list[FeatureSet]] = relationship(back_populates='dataset_version')

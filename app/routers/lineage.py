@@ -6,7 +6,6 @@ from app.routers import DBSession
 from app.schemas.lineage import LineageCreate, LineageGraph, LineageNode, LineageRead
 from app.services.lineage_service import LineageService
 
-
 router = APIRouter(prefix='/lineage', tags=['lineage'])
 
 

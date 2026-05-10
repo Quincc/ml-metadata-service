@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field
 
 from app.schemas.common import TimeStampResponseSchema
 
-
 ExperimentStatus = Literal["created", "running", "finished", "failed"]
 
 

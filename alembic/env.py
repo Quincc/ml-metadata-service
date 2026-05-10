@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 import app.models  # noqa: F401
-from app.db import Base, DATABASE_URL
+from alembic import context
+from app.db import DATABASE_URL, Base
 
 config = context.config
 
