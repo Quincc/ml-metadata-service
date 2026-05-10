@@ -560,6 +560,56 @@ def create_schema_from_csv_ui(
     )
 
 
+@router.post("/datasets/{dataset_id}/versions/from-csv")
+def create_dataset_version_from_csv_ui(
+    db: DBSession,
+    dataset_id: int,
+    file: UploadFile = File(...),
+) -> RedirectResponse:
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    try:
+        schema_definition = infer_schema_from_csv(file.file.read())
+    except ValueError:
+        return RedirectResponse(url=f"/ui/datasets/{dataset_id}?error=Invalid+CSV", status_code=303)
+
+    schema_version = SchemaVersion(
+        dataset_id=dataset_id,
+        version_number=VersioningService.get_next_schema_version(db=db, dataset_id=dataset_id),
+        schema_json=schema_definition,
+    )
+    db.add(schema_version)
+    db.flush()
+    LineageService.create(
+        db=db, from_entity_type="dataset", from_entity_id=dataset_id,
+        to_entity_type="schema_version", to_entity_id=schema_version.id,
+        relation_type="has_schema_version",
+    )
+    dataset_version = DatasetVersion(
+        dataset_id=dataset_id,
+        version_number=VersioningService.get_next_dataset_version(db=db, dataset_id=dataset_id),
+        schema_version_id=schema_version.id,
+    )
+    db.add(dataset_version)
+    db.flush()
+    LineageService.create(
+        db=db, from_entity_type="dataset", from_entity_id=dataset_id,
+        to_entity_type="dataset_version", to_entity_id=dataset_version.id,
+        relation_type="has_version",
+    )
+    LineageService.create(
+        db=db, from_entity_type="schema_version", from_entity_id=schema_version.id,
+        to_entity_type="dataset_version", to_entity_id=dataset_version.id,
+        relation_type="defines_schema_for",
+    )
+    db.commit()
+    return RedirectResponse(
+        url=f"/ui/datasets/{dataset_id}?message=Imported+CSV:+schema+v{schema_version.version_number}+%2B+version+v{dataset_version.version_number}",
+        status_code=303,
+    )
+
+
 @router.post("/datasets/{dataset_id}/delete")
 def delete_dataset_ui(db: DBSession, dataset_id: int) -> RedirectResponse:
     dataset = db.get(Dataset, dataset_id)

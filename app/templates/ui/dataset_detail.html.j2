@@ -98,6 +98,16 @@
 
     <section class="panel">
       {{ displays.panel_header('Versioning', 'Dataset versions') }}
+      {% if not dataset.deleted_at %}
+        <form method="post" action="/ui/datasets/{{ dataset.id }}/versions/from-csv"
+              enctype="multipart/form-data" class="form-inline">
+          <label>
+            <span>Import CSV (creates schema + version)</span>
+            <input type="file" name="file" accept=".csv,text/csv" required />
+          </label>
+          <button type="submit">Import</button>
+        </form>
+      {% endif %}
       {{ displays.entity_table(['ID', 'Version', 'Schema', 'Created', 'Status'], version_rows, 'No dataset versions yet') }}
     </section>
 

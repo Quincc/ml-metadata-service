@@ -212,6 +212,63 @@ def create_schema_version(
     return schema_version
 
 
+@router.post('/{dataset_id}/versions/from-csv', response_model=DatasetVersionRead, status_code=status.HTTP_201_CREATED)
+def create_dataset_version_from_csv(
+    request: Request,
+    db: DBSession,
+    dataset_id: int,
+    file: UploadFile = File(...),
+) -> DatasetVersion:
+    """Импорт CSV: создаёт версию схемы и версию датасета за один шаг."""
+    get_active_dataset(db=db, dataset_id=dataset_id)
+
+    schema_definition = infer_schema_from_csv(file.file.read())
+
+    schema_version = SchemaVersion(
+        dataset_id=dataset_id,
+        version_number=VersioningService.get_next_schema_version(db=db, dataset_id=dataset_id),
+        schema_json=schema_definition,
+    )
+    db.add(schema_version)
+    db.flush()
+    LineageService.create(
+        db=db,
+        from_entity_type='dataset',
+        from_entity_id=dataset_id,
+        to_entity_type='schema_version',
+        to_entity_id=schema_version.id,
+        relation_type='has_schema_version',
+    )
+
+    dataset_version = DatasetVersion(
+        dataset_id=dataset_id,
+        version_number=VersioningService.get_next_dataset_version(db=db, dataset_id=dataset_id),
+        schema_version_id=schema_version.id,
+    )
+    db.add(dataset_version)
+    db.flush()
+    LineageService.create(
+        db=db,
+        from_entity_type='dataset',
+        from_entity_id=dataset_id,
+        to_entity_type='dataset_version',
+        to_entity_id=dataset_version.id,
+        relation_type='has_version',
+    )
+    LineageService.create(
+        db=db,
+        from_entity_type='schema_version',
+        from_entity_id=schema_version.id,
+        to_entity_type='dataset_version',
+        to_entity_id=dataset_version.id,
+        relation_type='defines_schema_for',
+    )
+
+    db.commit()
+    db.refresh(dataset_version)
+    return dataset_version
+
+
 @router.post('/{dataset_id}/schema/from-csv', response_model=SchemaVersionRead, status_code=status.HTTP_201_CREATED)
 def create_schema_version_from_csv(
     request: Request,
