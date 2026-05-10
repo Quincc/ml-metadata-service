@@ -73,22 +73,10 @@
       </label>
       <button type="submit">Create dataset</button>
     </form>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>ID</th><th>Name</th><th>Source</th></tr></thead>
-        <tbody>
-          {% for dataset in datasets %}
-            <tr>
-              <td>#{{ dataset.id }}</td>
-              <td><a href="/ui/datasets/{{ dataset.id }}">{{ dataset.name }}</a></td>
-              <td>{{ source_lookup.get(dataset.source_id, 'Unknown') }}</td>
-            </tr>
-          {% else %}
-            <tr><td colspan="3" class="empty-row">No datasets yet</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    <input type="search" name="q" placeholder="Search datasets by name…" class="filter-input"
+           hx-get="/ui/search/datasets" hx-target="#datasets-table-wrap" hx-swap="outerHTML"
+           hx-trigger="keyup changed delay:300ms, search" />
+    {% include "ui/_datasets_table.html.j2" %}
   </section>
 
   <section class="panel">
@@ -185,23 +173,18 @@
 }', required=True, css_class='code-input') }}
       <button type="submit">Create experiment</button>
     </form>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>ID</th><th>Name</th><th>Feature set</th><th>Status</th></tr></thead>
-        <tbody>
-          {% for experiment in experiments %}
-            <tr>
-              <td>#{{ experiment.id }}</td>
-              <td><a href="/ui/experiments/{{ experiment.id }}">{{ experiment.name }}</a></td>
-              <td>{{ feature_lookup.get(experiment.feature_set_id, 'Unknown') }}</td>
-              <td><span class="status-pill status-{{ experiment.status }}">{{ experiment.status }}</span></td>
-            </tr>
-          {% else %}
-            <tr><td colspan="4" class="empty-row">No experiments yet</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="filter-row" hx-get="/ui/search/experiments" hx-target="#experiments-table-wrap" hx-swap="outerHTML"
+         hx-trigger="keyup changed delay:300ms from:input[name=q], change from:select[name=status]"
+         hx-include="this">
+      <input type="search" name="q" placeholder="Search experiments by name…" class="filter-input" />
+      <select name="status" class="filter-input">
+        <option value="">All statuses</option>
+        {% for s in ['created', 'running', 'finished', 'failed'] %}
+          <option value="{{ s }}">{{ s }}</option>
+        {% endfor %}
+      </select>
     </div>
+    {% include "ui/_experiments_table.html.j2" %}
   </section>
 
   <section class="panel">

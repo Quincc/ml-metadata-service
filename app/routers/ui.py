@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -13,8 +13,8 @@ from app.models.datasource import DataSource
 from app.models.experiment import Experiment
 from app.models.feature_set import FeatureSet
 from app.models.model import Model
-from app.routers import DBSession
 from app.models.schema_version import SchemaVersion
+from app.routers import DBSession
 from app.schemas.lineage import LineageGraph, LineageNode, LineageRead
 from app.services.lineage_service import LineageService
 from app.services.schema_inference import infer_schema_from_csv
@@ -712,6 +712,44 @@ def _archived_rows(db: DBSession) -> dict[str, list[dict]]:
             for m in models
         ],
     }
+
+
+@router.get("/search/datasets", response_class=HTMLResponse)
+def search_datasets_ui(request: Request, db: DBSession, q: str = "") -> HTMLResponse:
+    stmt = select(Dataset).where(Dataset.deleted_at.is_(None))
+    if q:
+        stmt = stmt.where(Dataset.name.ilike(f"%{q}%"))
+    datasets = db.scalars(stmt.order_by(Dataset.id.desc())).all()
+    sources = db.scalars(select(DataSource).where(DataSource.deleted_at.is_(None))).all()
+    source_lookup = {s.id: s.name for s in sources}
+    return templates.TemplateResponse(
+        "ui/_datasets_table.html.j2",
+        {"request": request, "datasets": datasets, "source_lookup": source_lookup, "filter_q": q},
+    )
+
+
+@router.get("/search/experiments", response_class=HTMLResponse)
+def search_experiments_ui(
+    request: Request, db: DBSession, q: str = "", status: str = ""
+) -> HTMLResponse:
+    stmt = select(Experiment).where(Experiment.deleted_at.is_(None))
+    if q:
+        stmt = stmt.where(Experiment.name.ilike(f"%{q}%"))
+    if status:
+        stmt = stmt.where(Experiment.status == status)
+    experiments = db.scalars(stmt.order_by(Experiment.id.desc())).all()
+    feature_sets = db.scalars(select(FeatureSet).where(FeatureSet.deleted_at.is_(None))).all()
+    feature_lookup = {f.id: f.name for f in feature_sets}
+    return templates.TemplateResponse(
+        "ui/_experiments_table.html.j2",
+        {
+            "request": request,
+            "experiments": experiments,
+            "feature_lookup": feature_lookup,
+            "filter_q": q,
+            "filter_status": status,
+        },
+    )
 
 
 @router.get("/archive", response_class=HTMLResponse)

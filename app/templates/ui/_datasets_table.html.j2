@@ -1,0 +1,16 @@
+<div id="datasets-table-wrap" class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Name</th><th>Source</th></tr></thead>
+    <tbody>
+      {% for dataset in datasets %}
+        <tr>
+          <td>#{{ dataset.id }}</td>
+          <td><a href="/ui/datasets/{{ dataset.id }}">{{ dataset.name }}</a></td>
+          <td>{{ source_lookup.get(dataset.source_id, 'Unknown') }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="empty-row">{% if filter_q %}No datasets match "{{ filter_q }}"{% else %}No datasets yet{% endif %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

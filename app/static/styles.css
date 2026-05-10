@@ -367,6 +367,29 @@ tbody tr:last-child td {
   margin-top: 18px;
 }
 
+.filter-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 251, 245, 0.85);
+  font-size: 14px;
+  margin-top: 14px;
+}
+.filter-input:focus {
+  outline: none;
+  border-color: #5b6cff;
+  box-shadow: 0 0 0 3px rgba(91, 108, 255, 0.18);
+}
+
+.filter-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+.filter-row .filter-input { margin-top: 0; }
+
 .code-block {
   background: #0f1228;
   color: #e6ebff;

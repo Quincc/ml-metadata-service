@@ -1,0 +1,17 @@
+<div id="experiments-table-wrap" class="table-wrap">
+  <table>
+    <thead><tr><th>ID</th><th>Name</th><th>Feature set</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for experiment in experiments %}
+        <tr>
+          <td>#{{ experiment.id }}</td>
+          <td><a href="/ui/experiments/{{ experiment.id }}">{{ experiment.name }}</a></td>
+          <td>{{ feature_lookup.get(experiment.feature_set_id, 'Unknown') }}</td>
+          <td><span class="status-pill status-{{ experiment.status }}">{{ experiment.status }}</span></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="empty-row">{% if filter_q or filter_status %}No experiments match the filters{% else %}No experiments yet{% endif %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
