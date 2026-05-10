@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -17,6 +17,7 @@ from app.routers import DBSession
 from app.models.schema_version import SchemaVersion
 from app.schemas.lineage import LineageGraph, LineageNode, LineageRead
 from app.services.lineage_service import LineageService
+from app.services.schema_inference import infer_schema_from_csv
 from app.services.versioning_service import VersioningService
 
 router = APIRouter(prefix="/ui", tags=["ui"])
@@ -520,6 +521,43 @@ def dataset_detail(
         **_load_dashboard_data(db),
     }
     return templates.TemplateResponse("ui/dataset_detail.html.j2", context)
+
+
+@router.post("/datasets/{dataset_id}/schema/from-csv")
+def create_schema_from_csv_ui(
+    db: DBSession,
+    dataset_id: int,
+    file: UploadFile = File(...),
+) -> RedirectResponse:
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    try:
+        schema_definition = infer_schema_from_csv(file.file.read())
+    except ValueError:
+        return RedirectResponse(url=f"/ui/datasets/{dataset_id}?error=Invalid+CSV", status_code=303)
+
+    version_number = VersioningService.get_next_schema_version(db=db, dataset_id=dataset_id)
+    schema_version = SchemaVersion(
+        dataset_id=dataset_id,
+        version_number=version_number,
+        schema_json=schema_definition,
+    )
+    db.add(schema_version)
+    db.flush()
+    LineageService.create(
+        db=db,
+        from_entity_type="dataset",
+        from_entity_id=dataset_id,
+        to_entity_type="schema_version",
+        to_entity_id=schema_version.id,
+        relation_type="has_schema_version",
+    )
+    db.commit()
+    return RedirectResponse(
+        url=f"/ui/datasets/{dataset_id}?message=Schema+v{version_number}+inferred+from+CSV",
+        status_code=303,
+    )
 
 
 @router.post("/datasets/{dataset_id}/delete")

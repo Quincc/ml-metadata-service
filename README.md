@@ -5,56 +5,49 @@
 
 В проекте есть:
 - REST API на `FastAPI`
-- встроенный UI на `Jinja2`
-- локальный офлайн-скрипт для HTMX-подобного поведения
-- PostgreSQL через `SQLAlchemy`
+- встроенный UI на `Jinja2` + `htmx` 1.9.12
+- интерактивный граф lineage (`vis-network`)
+- PostgreSQL через `SQLAlchemy 2`
 - миграции через `Alembic`
-- запуск через `uv` и `Docker`
+- настройки через `pydantic-settings`
+- запуск через `uv` и `Docker Compose`
+- pytest + GitHub Actions CI
 
 ## Что умеет система
 
-- регистрировать источники данных
-- регистрировать датасеты
-- хранить версии датасетов
-- хранить версии схем
-- хранить наборы признаков
-- хранить эксперименты
-- строить lineage для сущности
-- поддерживать soft delete для основных сущностей
+- регистрировать источники данных, датасеты, версии схем и данных, feature sets, эксперименты, модели
+- автоматически инферить схему из CSV-файла
+- строить lineage от источника до модели (граф с кликабельными узлами)
+- хранить параметры/метрики эксперимента, его статус (`created` / `running` / `finished` / `failed`) и артефакты (notebook URL, путь к отчёту)
+- регистрировать модели (`Model`), произведённые экспериментом
+- soft-delete с архивом и восстановлением через UI
+- единые ошибки API (`IntegrityError → 409`, `ValueError → 400`)
 
-Основная идея: показать происхождение данных от источника до ML-эксперимента.
+Основная идея: показать происхождение данных от источника до обученной модели.
 
 ## Структура проекта
 
 ```text
 app/
-  models/
-  routers/
-  schemas/
-  services/
-  static/
-  templates/
-    ui/
-  db.py
+  models/             # SQLAlchemy ORM (Dataset, Experiment, Model, ...)
+  routers/            # REST + UI endpoints
+  schemas/            # Pydantic схемы
+  services/           # бизнес-логика (lineage, versioning, schema_inference)
+  templates/          # Jinja2 (base, dashboard, dataset_detail, experiment_detail, archive, lineage)
+  static/             # htmx, vis-network, styles.css
+  db.py               # engine + Session + Base
+  exceptions.py       # глобальные обработчики ошибок
   main.py
+  settings.py         # pydantic-settings
+alembic/versions/     # миграции (0001..0005)
+test/                 # pytest (smoke + e2e сценарии)
 scripts/
   preprocess_titanic.py
-alembic/
-  env.py
-  versions/
+  seed_demo_metadata.py
 data/
-  raw/
-    titanic_dataset.csv
-  processed/
-    train_cleaned.csv
-  schemas/
-    train_cleaned_schema.json
-Dockerfile
-docker-compose.yml
-pyproject.toml
-requirements.txt
-alembic.ini
-uv.lock
+  raw/ processed/ schemas/
+.github/workflows/ci.yml
+Dockerfile docker-compose.yml pyproject.toml uv.lock alembic.ini
 ```
 
 ## Технологии
@@ -173,14 +166,13 @@ uv run alembic current
 uv run alembic revision --autogenerate -m "describe change"
 ```
 
-Если база была создана до настройки Alembic и уже содержит исходную схему, можно сначала отметить стартовую ревизию:
+Если база уже содержит схему, но запись в `alembic_version` отсутствует — стампить вручную:
 
 ```bash
-uv run alembic stamp 20260416_0001
-uv run alembic upgrade head
+uv run alembic stamp 20260509_0005
 ```
 
-Примечание: сейчас приложение в dev-режиме также создает таблицы при старте через `Base.metadata.create_all(...)`. Для контролируемого изменения схемы основной способ все равно `Alembic`.
+Создать таблицы через `Base.metadata.create_all(...)` приложение **не** делает — единственный путь — `alembic upgrade head` (запускается автоматически в Docker).
 
 ## Основные сущности
 
@@ -189,37 +181,44 @@ uv run alembic upgrade head
 - `SchemaVersion` — версия схемы датасета
 - `DatasetVersion` — версия данных
 - `FeatureSet` — набор признаков
-- `Experiment` — ML-эксперимент
+- `Experiment` — ML-эксперимент со статусом и артефактами
+- `Model` — обученная модель, привязанная к эксперименту
 - `LineageEdge` — связь между сущностями
 
 ## Типовой сценарий работы
 
-1. Создать источник данных.
-2. Создать датасет.
-3. Создать версию схемы.
-4. Создать версию датасета.
-5. Создать feature set.
-6. Создать эксперимент.
-7. Посмотреть lineage через UI или API.
-
-Пример цепочки:
-
 ```text
-source -> dataset -> dataset_version -> feature_set -> experiment
+source → dataset → schema_version → dataset_version → feature_set → experiment → model
 ```
+
+1. `POST /sources` — источник данных
+2. `POST /datasets` — датасет
+3. `POST /datasets/{id}/schema` (или `/schema/from-csv` для автоинфера)
+4. `POST /datasets/{id}/versions`
+5. `POST /features`
+6. `POST /experiments` (можно сразу с `status="running"`, `notebook_url`, `report_path`)
+7. `PATCH /experiments/{id}/status` — обновить статус (`finished` / `failed`)
+8. `POST /models` — зафиксировать обученную модель
+9. `GET /lineage/{entity_type}/{entity_id}` — посмотреть граф
+
+## Демо-данные за один шаг
+
+Заполнить БД готовым каталогом (3 источника, 3 датасета, 7 экспериментов, 7 моделей, 41 lineage-edge):
+
+```bash
+uv run python scripts/seed_demo_metadata.py
+```
+
+После этого откройте `http://localhost:8000/ui` — на дашборде заполнены все таблицы. В Lineage Explorer выберите `model` / `1` или `source` / `1` — увидите цепочку.
 
 ## Пример с Titanic
 
-В проекте есть учебный сценарий для датасета Titanic. Данные теперь разделены по назначению:
-
-- `data/raw/` — исходные файлы
-- `data/processed/` — подготовленные данные
-- `data/schemas/` — экспортированные JSON-схемы
-
-Исходный файл:
+В проекте есть учебный сценарий с датасетом Titanic.
 
 ```text
-data/raw/titanic_dataset.csv
+data/raw/titanic_dataset.csv      # исходный файл
+data/processed/train_cleaned.csv  # подготовленные данные
+data/schemas/train_cleaned_schema.json
 ```
 
 Скрипт preprocessing:
@@ -231,51 +230,29 @@ uv run python scripts/preprocess_titanic.py \
   --schema-output data/schemas/train_cleaned_schema.json
 ```
 
-Скрипт:
-- заполняет пропуски в `Age`
-- заполняет пропуски в `Fare`
-- заполняет пропуски в `Embarked`
-- создает `FamilySize`
-- кодирует `Sex` в `SexEncoded`
-- кодирует `Embarked` в `EmbarkedEncoded`
-- удаляет лишние текстовые поля
-- сохраняет очищенный CSV и JSON-схему
+Сценарий демо в UI:
 
-После выполнения появятся:
-- `data/processed/train_cleaned.csv`
-- `data/schemas/train_cleaned_schema.json`
+1. Откройте `/ui` → видите дашборд (если запустили seed — данные уже там).
+2. Кликните по `titanic_survival` в таблице Datasets — откроется детальная страница.
+3. На странице — версии схем, версии данных, feature sets, lineage-граф этого датасета.
+4. Загрузите `data/raw/titanic_dataset.csv` через форму **Infer schema from CSV** — появится новая schema version с автоинферированными типами.
+5. Вернитесь на дашборд → клик по эксперименту `titanic_xgboost_tuned` → детальная страница с метриками и graph rooted at experiment.
+6. На графе кликните по узлу `model` — перерисуется lineage относительно модели.
+7. Архивируйте эксперимент → проверьте `/ui/archive` → восстановите.
 
-Дальше можно:
-- зарегистрировать `Titanic CSV` как `Data Source`
-- создать датасет `titanic_survival`
-- добавить `Schema Version` из `data/schemas/train_cleaned_schema.json`
-- добавить `Dataset Version`
-- создать `Feature Set`
-- создать `Experiment`
-- открыть lineage в `/ui`
+## Soft Delete и архив
 
-## Проверка API
+Для всех основных сущностей — мягкое удаление через `deleted_at`. Архивные сущности скрыты с дашборда, доступны на `/ui/archive` с кнопкой Restore. Lineage-история сохраняется.
 
-Проще всего тестировать через Swagger:
+## Тесты
 
-```text
-http://localhost:8000/docs
+```bash
+uv run pytest
 ```
 
-Минимальная последовательность:
+9 тестов покрывают: health-check, рендер UI, full pipeline source→model, статусы эксперимента, архив + restore, IntegrityError → 409, CSV schema inference.
 
-1. `POST /sources`
-2. `POST /datasets`
-3. `POST /datasets/{id}/schema`
-4. `POST /datasets/{id}/versions`
-5. `POST /features`
-6. `POST /experiments`
-7. `GET /lineage/{entity_type}/{entity_id}`
-
-## Soft Delete
-
-Для основных сущностей поддерживается мягкое удаление.
-Это позволяет не ломать историю и lineage физическим удалением записей.
+CI на GitHub Actions запускает `pytest` при push/PR в `main` ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 
 ## Локальный запуск через pip
 

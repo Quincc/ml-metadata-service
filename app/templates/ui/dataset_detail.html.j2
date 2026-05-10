@@ -83,6 +83,16 @@
 
     <section class="panel">
       {{ displays.panel_header('Versioning', 'Schema versions') }}
+      {% if not dataset.deleted_at %}
+        <form method="post" action="/ui/datasets/{{ dataset.id }}/schema/from-csv"
+              enctype="multipart/form-data" class="form-inline">
+          <label>
+            <span>Infer schema from CSV</span>
+            <input type="file" name="file" accept=".csv,text/csv" required />
+          </label>
+          <button type="submit">Upload & infer</button>
+        </form>
+      {% endif %}
       {{ displays.entity_table(['ID', 'Version', 'Created', 'Status'], schema_rows, 'No schema versions yet') }}
     </section>
 

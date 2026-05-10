@@ -6,11 +6,6 @@
   {% set _ = source_rows.append(['#' ~ source.id, source.name, source.source_type, source.location]) %}
 {% endfor %}
 
-{% set dataset_rows = [] %}
-{% for dataset in datasets %}
-  {% set name_link = ('<a href="/ui/datasets/' ~ dataset.id ~ '">' ~ (dataset.name|e) ~ '</a>')|safe %}
-  {% set _ = dataset_rows.append(['#' ~ dataset.id, name_link, source_lookup.get(dataset.source_id, 'Unknown')]) %}
-{% endfor %}
 
 {% set schema_rows = [] %}
 {% for schema_version in schema_versions %}
@@ -27,12 +22,6 @@
   {% set _ = feature_rows.append(['#' ~ feature_set.id, feature_set.name, dataset_version_lookup.get(feature_set.dataset_version_id, 'Unknown')]) %}
 {% endfor %}
 
-{% set experiment_rows = [] %}
-{% for experiment in experiments %}
-  {% set name_link = ('<a href="/ui/experiments/' ~ experiment.id ~ '">' ~ (experiment.name|e) ~ '</a>')|safe %}
-  {% set status_pill = ('<span class="status-pill status-' ~ experiment.status ~ '">' ~ experiment.status ~ '</span>')|safe %}
-  {% set _ = experiment_rows.append(['#' ~ experiment.id, name_link, feature_lookup.get(experiment.feature_set_id, 'Unknown'), status_pill]) %}
-{% endfor %}
 
 {% set model_rows = [] %}
 {% for m in models %}
@@ -84,7 +73,22 @@
       </label>
       <button type="submit">Create dataset</button>
     </form>
-    {{ displays.entity_table(['ID', 'Name', 'Source'], dataset_rows, 'No datasets yet') }}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Source</th></tr></thead>
+        <tbody>
+          {% for dataset in datasets %}
+            <tr>
+              <td>#{{ dataset.id }}</td>
+              <td><a href="/ui/datasets/{{ dataset.id }}">{{ dataset.name }}</a></td>
+              <td>{{ source_lookup.get(dataset.source_id, 'Unknown') }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="3" class="empty-row">No datasets yet</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <section class="panel">
@@ -181,7 +185,23 @@
 }', required=True, css_class='code-input') }}
       <button type="submit">Create experiment</button>
     </form>
-    {{ displays.entity_table(['ID', 'Name', 'Feature set', 'Status'], experiment_rows, 'No experiments yet') }}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Feature set</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for experiment in experiments %}
+            <tr>
+              <td>#{{ experiment.id }}</td>
+              <td><a href="/ui/experiments/{{ experiment.id }}">{{ experiment.name }}</a></td>
+              <td>{{ feature_lookup.get(experiment.feature_set_id, 'Unknown') }}</td>
+              <td><span class="status-pill status-{{ experiment.status }}">{{ experiment.status }}</span></td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="empty-row">No experiments yet</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <section class="panel">

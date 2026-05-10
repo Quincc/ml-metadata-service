@@ -1,5 +1,7 @@
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from sqlalchemy import exists, select
+
+from app.services.schema_inference import infer_schema_from_csv
 
 from app.models.dataset import Dataset
 from app.models.dataset_version import DatasetVersion
@@ -194,6 +196,42 @@ def create_schema_version(
         dataset_id=dataset_id,
         version_number=version_number,
         schema_json=payload.schema_definition,
+    )
+    db.add(schema_version)
+    db.flush()
+
+    LineageService.create(
+        db=db,
+        from_entity_type='dataset',
+        from_entity_id=dataset_id,
+        to_entity_type='schema_version',
+        to_entity_id=schema_version.id,
+        relation_type='has_schema_version',
+    )
+
+    db.commit()
+    db.refresh(schema_version)
+    return schema_version
+
+
+@router.post('/{dataset_id}/schema/from-csv', response_model=SchemaVersionRead, status_code=status.HTTP_201_CREATED)
+def create_schema_version_from_csv(
+    request: Request,
+    db: DBSession,
+    dataset_id: int,
+    file: UploadFile = File(...),
+) -> SchemaVersion:
+    """Создание версии схемы автоматически из CSV-файла."""
+    get_active_dataset(db=db, dataset_id=dataset_id)
+
+    file_bytes = file.file.read()
+    schema_definition = infer_schema_from_csv(file_bytes)
+
+    version_number = VersioningService.get_next_schema_version(db=db, dataset_id=dataset_id)
+    schema_version = SchemaVersion(
+        dataset_id=dataset_id,
+        version_number=version_number,
+        schema_json=schema_definition,
     )
     db.add(schema_version)
     db.flush()
