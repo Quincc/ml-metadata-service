@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -14,10 +15,22 @@ from app.routers.feature_set import router as feature_set_router
 from app.routers.lineage import router as lineage_router
 from app.routers.model import router as model_router
 from app.routers.ui import router as ui_router
+from app.services.audit_service import register_audit_listeners
+from app.settings import get_settings
+
+_settings = get_settings()
+logging.basicConfig(
+    level=getattr(logging, _settings.log_level.upper(), logging.INFO),
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    logging.getLogger(__name__).info(
+        "Starting in %s mode (sql_echo=%s, pool_size=%s)",
+        _settings.environment, _settings.sql_echo, _settings.db_pool_size,
+    )
     wait_for_database()
     yield
 
@@ -27,9 +40,12 @@ app = FastAPI(
     description="Backend service for datasets, versions, schemas, feature sets and lineage.",
     version="0.1.0",
     lifespan=lifespan,
+    docs_url="/docs" if not _settings.is_prod else None,
+    redoc_url="/redoc" if not _settings.is_prod else None,
 )
 
 register_exception_handlers(app)
+register_audit_listeners()
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

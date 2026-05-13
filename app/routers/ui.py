@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.models.audit_log import AuditLog
 from app.models.dataset import Dataset
 from app.models.dataset_version import DatasetVersion
 from app.models.datasource import DataSource
@@ -798,6 +799,37 @@ def search_experiments_ui(
             "feature_lookup": feature_lookup,
             "filter_q": q,
             "filter_status": status,
+        },
+    )
+
+
+@router.get("/audit", response_class=HTMLResponse)
+def audit_view(
+    request: Request,
+    db: DBSession,
+    q: str = "",
+    entity_type: str = "",
+    action: str = "",
+) -> HTMLResponse:
+    stmt = select(AuditLog).order_by(AuditLog.created_at.desc()).limit(200)
+    if q:
+        stmt = stmt.where(AuditLog.entity_name.ilike(f"%{q}%"))
+    if entity_type:
+        stmt = stmt.where(AuditLog.entity_type == entity_type)
+    if action:
+        stmt = stmt.where(AuditLog.action == action)
+    audit_logs = db.scalars(stmt).all()
+
+    is_partial = request.headers.get("HX-Request") == "true"
+    template = "ui/_audit_table.html.j2" if is_partial else "ui/audit.html.j2"
+    return templates.TemplateResponse(
+        template,
+        {
+            "request": request,
+            "audit_logs": audit_logs,
+            "filter_q": q,
+            "filter_entity_type": entity_type,
+            "filter_action": action,
         },
     )
 

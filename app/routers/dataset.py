@@ -1,4 +1,5 @@
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import exists, select
 
 from app.models.dataset import Dataset
@@ -62,6 +63,46 @@ def list_datasets(request: Request, db: DBSession) -> list[Dataset]:
 def get_dataset(request: Request, db: DBSession, dataset_id: int) -> Dataset:
     """Получаем информацию по датасету."""
     return get_active_dataset(db=db, dataset_id=dataset_id)
+
+
+@router.get('/{dataset_id}/report')
+def export_dataset_report(request: Request, db: DBSession, dataset_id: int) -> JSONResponse:
+    """JSON-дамп датасета: схемы, версии, feature sets, эксперименты, модели."""
+    dataset = get_active_dataset(db=db, dataset_id=dataset_id)
+    source = db.get(DataSource, dataset.source_id)
+    schemas = db.scalars(
+        select(SchemaVersion).where(SchemaVersion.dataset_id == dataset_id, SchemaVersion.deleted_at.is_(None))
+    ).all()
+    versions = db.scalars(
+        select(DatasetVersion).where(DatasetVersion.dataset_id == dataset_id, DatasetVersion.deleted_at.is_(None))
+    ).all()
+    version_ids = [v.id for v in versions]
+    feature_sets = []
+    if version_ids:
+        feature_sets = db.scalars(
+            select(FeatureSet).where(FeatureSet.dataset_version_id.in_(version_ids), FeatureSet.deleted_at.is_(None))
+        ).all()
+
+    payload = {
+        "dataset": {"id": dataset.id, "name": dataset.name, "description": dataset.description},
+        "source": {"id": source.id, "name": source.name, "type": source.source_type, "location": source.location} if source else None,
+        "schema_versions": [
+            {"id": s.id, "version": s.version_number, "schema_json": s.schema_json}
+            for s in schemas
+        ],
+        "dataset_versions": [
+            {"id": v.id, "version": v.version_number, "schema_version_id": v.schema_version_id}
+            for v in versions
+        ],
+        "feature_sets": [
+            {"id": f.id, "name": f.name, "dataset_version_id": f.dataset_version_id, "schema": f.feature_schema_json}
+            for f in feature_sets
+        ],
+    }
+    return JSONResponse(
+        payload,
+        headers={"Content-Disposition": f'attachment; filename="dataset_{dataset_id}_report.json"'},
+    )
 
 
 @router.delete('/{dataset_id}', response_model=DatasetRead)

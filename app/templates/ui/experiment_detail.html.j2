@@ -40,6 +40,7 @@
         {% endif %}
       </div>
       <div class="hero-actions">
+        <a class="ghost-link" href="/experiments/{{ experiment.id }}/report" download>Export Markdown</a>
         {% if not experiment.deleted_at %}
           <form method="post" action="/ui/experiments/{{ experiment.id }}/status" class="form-inline">
             <select name="status">

@@ -1,0 +1,45 @@
+{% extends "base.html.j2" %}
+{% import "components/displays.html.j2" as displays %}
+
+{% block title %}Audit · Metadata Atlas{% endblock title %}
+
+{% block body %}
+  <div class="page-shell">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <header class="hero">
+      <div>
+        <p class="eyebrow">
+          <a class="ghost-link" href="/ui">← Dashboard</a>
+        </p>
+        <h1>Audit log</h1>
+        <p class="hero-copy">
+          Записи о создании, архивации и восстановлении сущностей. Последние {{ audit_logs|length }} событий.
+        </p>
+      </div>
+    </header>
+
+    <section class="panel">
+      {{ displays.panel_header('Recent', 'Activity', 'Фильтры применяются на сервере; пустой ввод снимает ограничение.') }}
+      <div class="filter-row" hx-get="/ui/audit" hx-target="#audit-table-wrap" hx-swap="outerHTML"
+           hx-trigger="keyup changed delay:300ms from:input[name=q], change from:select[name=entity_type], change from:select[name=action]"
+           hx-include="this">
+        <input type="search" name="q" value="{{ filter_q or '' }}" placeholder="Search by entity name…" class="filter-input" />
+        <select name="entity_type" class="filter-input">
+          <option value="">All entities</option>
+          {% for et in ['source', 'dataset', 'schema_version', 'dataset_version', 'feature_set', 'experiment', 'model'] %}
+            <option value="{{ et }}" {% if filter_entity_type == et %}selected{% endif %}>{{ et }}</option>
+          {% endfor %}
+        </select>
+        <select name="action" class="filter-input">
+          <option value="">All actions</option>
+          {% for a in ['created', 'archived', 'restored'] %}
+            <option value="{{ a }}" {% if filter_action == a %}selected{% endif %}>{{ a }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% include "ui/_audit_table.html.j2" %}
+    </section>
+  </div>
+{% endblock body %}

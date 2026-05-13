@@ -33,6 +33,7 @@
         </p>
       </div>
       <div class="hero-actions">
+        <a class="ghost-link" href="/datasets/{{ dataset.id }}/report" download>Export JSON</a>
         {% if dataset.deleted_at %}
           <form method="post" action="/ui/datasets/{{ dataset.id }}/restore">
             <button type="submit">Restore dataset</button>
