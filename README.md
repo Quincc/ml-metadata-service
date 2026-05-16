@@ -39,7 +39,7 @@ app/
   exceptions.py       # глобальные обработчики ошибок
   main.py
   settings.py         # pydantic-settings
-alembic/versions/     # миграции (0001..0005)
+alembic/versions/     # миграции (0001..0007)
 test/                 # pytest (smoke + e2e сценарии)
 scripts/
   preprocess_titanic.py
@@ -169,7 +169,7 @@ uv run alembic revision --autogenerate -m "describe change"
 Если база уже содержит схему, но запись в `alembic_version` отсутствует — стампить вручную:
 
 ```bash
-uv run alembic stamp 20260509_0005
+uv run alembic stamp 20260509_0007
 ```
 
 Создать таблицы через `Base.metadata.create_all(...)` приложение **не** делает — единственный путь — `alembic upgrade head` (запускается автоматически в Docker).
@@ -184,6 +184,7 @@ uv run alembic stamp 20260509_0005
 - `Experiment` — ML-эксперимент со статусом и артефактами
 - `Model` — обученная модель, привязанная к эксперименту
 - `LineageEdge` — связь между сущностями
+- `AuditLog` — журнал создания, архивирования и восстановления сущностей
 
 ## Типовой сценарий работы
 
@@ -250,7 +251,7 @@ uv run python scripts/preprocess_titanic.py \
 uv run pytest
 ```
 
-9 тестов покрывают: health-check, рендер UI, full pipeline source→model, статусы эксперимента, архив + restore, IntegrityError → 409, CSV schema inference.
+14 тестов покрывают: health-check, рендер UI, full pipeline source→model, статусы эксперимента, архив + restore, IntegrityError → 409, CSV schema inference, создание dataset version из CSV, поиск датасетов, audit log, экспорт отчётов и детальные страницы.
 
 CI на GitHub Actions запускает `pytest` при push/PR в `main` ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 
