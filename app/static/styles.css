@@ -320,6 +320,11 @@ button:hover {
   border-top: 1px solid rgba(74, 55, 33, 0.08);
 }
 
+.edit-form select {
+  min-height: 50px;
+  text-overflow: ellipsis;
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
@@ -539,6 +544,26 @@ textarea.json-invalid {
   margin-top: 12px;
 }
 
+.metadata-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 2fr) minmax(130px, 1fr) minmax(130px, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.metadata-grid .stat-card {
+  min-width: 0;
+}
+
+.metadata-grid .stat-card strong {
+  display: block;
+  max-width: 100%;
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  line-height: 1.08;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .status-pill {
   display: inline-block;
   margin-left: 10px;
@@ -662,6 +687,10 @@ button.danger {
 }
 
 @media (max-width: 860px) {
+  .metadata-grid {
+    grid-template-columns: 1fr;
+  }
+
   .page-shell {
     width: min(100% - 20px, 100%);
     padding-top: 18px;

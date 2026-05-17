@@ -31,7 +31,13 @@
         {% for row in rows %}
           <tr>
             {% for cell in row %}
-              <td>{{ cell }}</td>
+              <td>
+                {% if cell is mapping and cell.url %}
+                  <a href="{{ cell.url }}">{{ cell.text }}</a>
+                {% else %}
+                  {{ cell }}
+                {% endif %}
+              </td>
             {% endfor %}
           </tr>
         {% else %}

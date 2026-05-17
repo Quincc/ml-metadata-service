@@ -1,0 +1,100 @@
+{% extends "base.html.j2" %}
+{% import "components/displays.html.j2" as displays %}
+{% import "components/forms.html.j2" as forms %}
+
+{% block title %}Schema #{{ schema_version.id }} · Metadata Atlas{% endblock title %}
+
+{% block body %}
+  <div class="page-shell">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <header class="hero">
+      <div class="hero-main">
+        <p class="eyebrow">
+          <a class="ghost-link" href="/ui">← Dashboard</a>
+          {% if schema_version.deleted_at %}
+            <span class="status-pill deleted">Archived</span>
+          {% else %}
+            <span class="status-pill active">Active</span>
+          {% endif %}
+        </p>
+        <h1>Schema version #{{ schema_version.id }}</h1>
+        <p class="hero-copy">
+          Dataset:
+          {% if dataset %}
+            <strong>#{{ dataset.id }} · {{ dataset.name }}</strong> · schema v{{ schema_version.version_number }}
+          {% else %}
+            <span class="muted">unknown</span>
+          {% endif %}
+        </p>
+      </div>
+      <div class="hero-actions">
+        {% if dataset %}<a class="ghost-link" href="/ui/datasets/{{ dataset.id }}">Open dataset</a>{% endif %}
+        {% if schema_version.deleted_at %}
+          <form method="post" action="/ui/schema-versions/{{ schema_version.id }}/restore">
+            <button type="submit">Restore schema</button>
+          </form>
+        {% else %}
+          <form method="post" action="/ui/schema-versions/{{ schema_version.id }}/delete"
+                onsubmit="return confirm('Archive schema version #{{ schema_version.id }}?');">
+            <button type="submit" class="danger">Archive schema</button>
+          </form>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if message %}<div class="notice success">{{ message }}</div>{% endif %}
+    {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
+
+    {% if not schema_version.deleted_at %}
+      <section class="panel wide collapsible-panel">
+        <details class="edit-details">
+          <summary>
+            <span>
+              <strong>Edit fields</strong>
+              <small>Update version number and schema JSON</small>
+            </span>
+          </summary>
+          <form method="post" action="/ui/schema-versions/{{ schema_version.id }}/update" class="stacked-form edit-form">
+            <label>
+              <span>Dataset</span>
+              <select name="dataset_id" required>
+                {% for candidate in datasets %}
+                  <option value="{{ candidate.id }}" {% if schema_version.dataset_id == candidate.id %}selected{% endif %}>
+                    #{{ candidate.id }} · {{ candidate.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </label>
+            {{ forms.text_input('version_number', 'Version number', '1', schema_version.version_number, True, 'number') }}
+            {{ forms.textarea('schema_json', 'Schema JSON', schema_version.schema_json | tojson(indent=2), required=True, css_class='code-input') }}
+            <button type="submit">Save schema version</button>
+          </form>
+        </details>
+      </section>
+    {% endif %}
+
+    {% set linked_rows = [] %}
+    {% for version in dataset_versions %}
+      {% set _ = linked_rows.append([
+        {'text': '#' ~ version.id, 'url': '/ui/dataset-versions/' ~ version.id},
+        'v' ~ version.version_number,
+        version.local_created_at.strftime('%Y-%m-%d %H:%M') if version.local_created_at else '—',
+        version.deleted_at and 'archived' or 'active'
+      ]) %}
+    {% endfor %}
+
+    <section class="panel">
+      {{ displays.panel_header('Schema', 'JSON definition') }}
+      <pre class="code-block">{{ schema_version.schema_json | tojson(indent=2) }}</pre>
+    </section>
+
+    <section class="panel">
+      {{ displays.panel_header('Usage', 'Dataset versions using this schema') }}
+      {{ displays.entity_table(['ID', 'Version', 'Created', 'Status'], linked_rows, 'No dataset versions use this schema yet') }}
+    </section>
+
+    {% include "ui/_lineage_section.html.j2" %}
+  </div>
+{% endblock body %}

@@ -1,0 +1,102 @@
+{% extends "base.html.j2" %}
+{% import "components/displays.html.j2" as displays %}
+{% import "components/forms.html.j2" as forms %}
+
+{% block title %}{{ feature_set.name }} · Metadata Atlas{% endblock title %}
+
+{% block body %}
+  <div class="page-shell">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <header class="hero">
+      <div class="hero-main">
+        <p class="eyebrow">
+          <a class="ghost-link" href="/ui">← Dashboard</a>
+          {% if feature_set.deleted_at %}
+            <span class="status-pill deleted">Archived</span>
+          {% else %}
+            <span class="status-pill active">Active</span>
+          {% endif %}
+        </p>
+        <h1>{{ feature_set.name }}</h1>
+        <p class="hero-copy">
+          Dataset version:
+          {% if dataset_version %}
+            <strong>#{{ dataset_version.id }} · v{{ dataset_version.version_number }}</strong>
+            {% if dataset %}for dataset <strong>{{ dataset.name }}</strong>{% endif %}
+          {% else %}
+            <span class="muted">unknown</span>
+          {% endif %}
+        </p>
+      </div>
+      <div class="hero-actions">
+        {% if dataset_version %}<a class="ghost-link" href="/ui/dataset-versions/{{ dataset_version.id }}">Open dataset version</a>{% endif %}
+        {% if dataset %}<a class="ghost-link" href="/ui/datasets/{{ dataset.id }}">Open dataset</a>{% endif %}
+        {% if feature_set.deleted_at %}
+          <form method="post" action="/ui/feature-sets/{{ feature_set.id }}/restore">
+            <button type="submit">Restore feature set</button>
+          </form>
+        {% else %}
+          <form method="post" action="/ui/feature-sets/{{ feature_set.id }}/delete"
+                onsubmit="return confirm('Archive feature set {{ feature_set.name }}?');">
+            <button type="submit" class="danger">Archive feature set</button>
+          </form>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if message %}<div class="notice success">{{ message }}</div>{% endif %}
+    {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
+
+    {% if not feature_set.deleted_at %}
+      <section class="panel wide collapsible-panel">
+        <details class="edit-details">
+          <summary>
+            <span>
+              <strong>Edit fields</strong>
+              <small>Update name, source dataset version and feature schema</small>
+            </span>
+          </summary>
+          <form method="post" action="/ui/feature-sets/{{ feature_set.id }}/update" class="stacked-form edit-form">
+            {{ forms.text_input('name', 'Name', 'titanic_basic_features_v1', feature_set.name, True) }}
+            <label>
+              <span>Dataset version</span>
+              <select name="dataset_version_id" required>
+                {% for candidate in dataset_versions %}
+                  <option value="{{ candidate.id }}" {% if feature_set.dataset_version_id == candidate.id %}selected{% endif %}>
+                    #{{ candidate.id }} · {{ dataset_lookup.get(candidate.dataset_id, 'Unknown') }} · v{{ candidate.version_number }}
+                  </option>
+                {% endfor %}
+              </select>
+            </label>
+            {{ forms.textarea('feature_schema_json', 'Feature schema JSON', feature_set.feature_schema_json | tojson(indent=2), required=True, css_class='code-input') }}
+            <button type="submit">Save feature set</button>
+          </form>
+        </details>
+      </section>
+    {% endif %}
+
+    {% set experiment_rows = [] %}
+    {% for experiment in experiments %}
+      {% set _ = experiment_rows.append([
+        {'text': '#' ~ experiment.id, 'url': '/ui/experiments/' ~ experiment.id},
+        experiment.name,
+        experiment.status,
+        experiment.local_created_at.strftime('%Y-%m-%d %H:%M') if experiment.local_created_at else '—'
+      ]) %}
+    {% endfor %}
+
+    <section class="panel">
+      {{ displays.panel_header('Feature Set', 'Feature schema') }}
+      <pre class="code-block">{{ feature_set.feature_schema_json | tojson(indent=2) }}</pre>
+    </section>
+
+    <section class="panel">
+      {{ displays.panel_header('Experiments', 'Model runs using this feature set') }}
+      {{ displays.entity_table(['ID', 'Name', 'Status', 'Created'], experiment_rows, 'No experiments yet') }}
+    </section>
+
+    {% include "ui/_lineage_section.html.j2" %}
+  </div>
+{% endblock body %}

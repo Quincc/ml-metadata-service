@@ -13,6 +13,7 @@ from app.models.dataset_version import DatasetVersion
 from app.models.datasource import DataSource
 from app.models.experiment import Experiment
 from app.models.feature_set import FeatureSet
+from app.models.lineage import LineageEdge
 from app.models.model import Model
 from app.models.schema_version import SchemaVersion
 from app.routers import DBSession
@@ -107,11 +108,19 @@ def _load_dashboard_data(db: DBSession) -> dict[str, Any]:
         "source_lookup": {source.id: source.name for source in sources},
         "dataset_lookup": {dataset.id: dataset.name for dataset in datasets},
         "schema_lookup": {
-            schema_version.id: f"{schema_version.dataset_id} / schema v{schema_version.version_number}"
+            schema_version.id: (
+                f"#{schema_version.id} · "
+                f"{next((dataset.name for dataset in datasets if dataset.id == schema_version.dataset_id), 'Unknown')} · "
+                f"schema v{schema_version.version_number}"
+            )
             for schema_version in schema_versions
         },
         "dataset_version_lookup": {
-            version.id: f"{version.dataset_id} / dataset v{version.version_number}"
+            version.id: (
+                f"#{version.id} · "
+                f"{next((dataset.name for dataset in datasets if dataset.id == version.dataset_id), 'Unknown')} · "
+                f"dataset v{version.version_number}"
+            )
             for version in dataset_versions
         },
         "feature_lookup": {feature_set.id: feature_set.name for feature_set in feature_sets},
@@ -631,6 +640,552 @@ def restore_dataset_ui(db: DBSession, dataset_id: int) -> RedirectResponse:
         dataset.restore()
         db.commit()
     return RedirectResponse(url=f"/ui/datasets/{dataset_id}", status_code=303)
+
+
+@router.get("/schema-versions/{schema_version_id}", response_class=HTMLResponse)
+def schema_version_detail(
+    request: Request,
+    db: DBSession,
+    schema_version_id: int,
+    message: str | None = None,
+    error: str | None = None,
+) -> HTMLResponse:
+    schema_version = db.get(SchemaVersion, schema_version_id)
+    if schema_version is None:
+        return _render_dashboard(
+            request, db, error=f"Schema version #{schema_version_id} not found", partial="full"
+        )
+
+    dataset = db.get(Dataset, schema_version.dataset_id)
+    dataset_versions = db.scalars(
+        select(DatasetVersion)
+        .where(DatasetVersion.schema_version_id == schema_version_id)
+        .order_by(DatasetVersion.version_number.desc())
+    ).all()
+    lineage_graph = _build_lineage_graph(db, "schema_version", schema_version_id)
+
+    context = {
+        **_load_dashboard_data(db),
+        "request": request,
+        "schema_version": schema_version,
+        "dataset": dataset,
+        "dataset_versions": dataset_versions,
+        "message": message,
+        "error": error,
+        "lineage_graph": lineage_graph,
+        "lineage_error": None,
+        "selected_entity_type": "schema_version",
+        "selected_entity_id": schema_version_id,
+    }
+    return templates.TemplateResponse("ui/schema_version_detail.html.j2", context)
+
+
+@router.get("/dataset-versions/{dataset_version_id}", response_class=HTMLResponse)
+def dataset_version_detail(
+    request: Request,
+    db: DBSession,
+    dataset_version_id: int,
+    message: str | None = None,
+    error: str | None = None,
+) -> HTMLResponse:
+    dataset_version = db.get(DatasetVersion, dataset_version_id)
+    if dataset_version is None:
+        return _render_dashboard(
+            request, db, error=f"Dataset version #{dataset_version_id} not found", partial="full"
+        )
+
+    dataset = db.get(Dataset, dataset_version.dataset_id)
+    schema_version = (
+        db.get(SchemaVersion, dataset_version.schema_version_id)
+        if dataset_version.schema_version_id
+        else None
+    )
+    feature_sets = db.scalars(
+        select(FeatureSet)
+        .where(FeatureSet.dataset_version_id == dataset_version_id)
+        .order_by(FeatureSet.id.desc())
+    ).all()
+    schema_versions = []
+    if dataset is not None:
+        schema_versions = db.scalars(
+            select(SchemaVersion)
+            .where(SchemaVersion.dataset_id == dataset.id, SchemaVersion.deleted_at.is_(None))
+            .order_by(SchemaVersion.version_number.desc())
+        ).all()
+    lineage_graph = _build_lineage_graph(db, "dataset_version", dataset_version_id)
+
+    context = {
+        **_load_dashboard_data(db),
+        "request": request,
+        "dataset_version": dataset_version,
+        "dataset": dataset,
+        "schema_version": schema_version,
+        "schema_versions": schema_versions,
+        "feature_sets": feature_sets,
+        "message": message,
+        "error": error,
+        "lineage_graph": lineage_graph,
+        "lineage_error": None,
+        "selected_entity_type": "dataset_version",
+        "selected_entity_id": dataset_version_id,
+    }
+    return templates.TemplateResponse("ui/dataset_version_detail.html.j2", context)
+
+
+@router.get("/feature-sets/{feature_set_id}", response_class=HTMLResponse)
+def feature_set_detail(
+    request: Request,
+    db: DBSession,
+    feature_set_id: int,
+    message: str | None = None,
+    error: str | None = None,
+) -> HTMLResponse:
+    feature_set = db.get(FeatureSet, feature_set_id)
+    if feature_set is None:
+        return _render_dashboard(
+            request, db, error=f"Feature set #{feature_set_id} not found", partial="full"
+        )
+
+    dataset_version = db.get(DatasetVersion, feature_set.dataset_version_id)
+    dataset = db.get(Dataset, dataset_version.dataset_id) if dataset_version else None
+    experiments = db.scalars(
+        select(Experiment)
+        .where(Experiment.feature_set_id == feature_set_id)
+        .order_by(Experiment.id.desc())
+    ).all()
+    dataset_versions = db.scalars(
+        select(DatasetVersion).where(DatasetVersion.deleted_at.is_(None)).order_by(DatasetVersion.id.desc())
+    ).all()
+    lineage_graph = _build_lineage_graph(db, "feature_set", feature_set_id)
+
+    context = {
+        **_load_dashboard_data(db),
+        "request": request,
+        "feature_set": feature_set,
+        "dataset_version": dataset_version,
+        "dataset": dataset,
+        "dataset_versions": dataset_versions,
+        "experiments": experiments,
+        "message": message,
+        "error": error,
+        "lineage_graph": lineage_graph,
+        "lineage_error": None,
+        "selected_entity_type": "feature_set",
+        "selected_entity_id": feature_set_id,
+    }
+    return templates.TemplateResponse("ui/feature_set_detail.html.j2", context)
+
+
+@router.get("/models/{model_id}", response_class=HTMLResponse)
+def model_detail(
+    request: Request,
+    db: DBSession,
+    model_id: int,
+    message: str | None = None,
+    error: str | None = None,
+) -> HTMLResponse:
+    model = db.get(Model, model_id)
+    if model is None:
+        return _render_dashboard(
+            request, db, error=f"Model #{model_id} not found", partial="full"
+        )
+
+    experiment = db.get(Experiment, model.experiment_id)
+    feature_set = db.get(FeatureSet, experiment.feature_set_id) if experiment else None
+    dataset_version = db.get(DatasetVersion, feature_set.dataset_version_id) if feature_set else None
+    dataset = db.get(Dataset, dataset_version.dataset_id) if dataset_version else None
+    lineage_graph = _build_lineage_graph(db, "model", model_id)
+
+    context = {
+        **_load_dashboard_data(db),
+        "request": request,
+        "model": model,
+        "experiment": experiment,
+        "feature_set": feature_set,
+        "dataset_version": dataset_version,
+        "dataset": dataset,
+        "message": message,
+        "error": error,
+        "lineage_graph": lineage_graph,
+        "lineage_error": None,
+        "selected_entity_type": "model",
+        "selected_entity_id": model_id,
+    }
+    return templates.TemplateResponse("ui/model_detail.html.j2", context)
+
+
+def _replace_lineage_link(
+    db: DBSession,
+    *,
+    to_entity_type: str,
+    to_entity_id: int,
+    relation_type: str,
+    new_from_entity_type: str | None,
+    new_from_entity_id: int | None,
+) -> None:
+    edges = LineageService.filter_all(
+        db=db,
+        where_clause=[
+            LineageEdge.to_entity_type == to_entity_type,
+            LineageEdge.to_entity_id == to_entity_id,
+            LineageEdge.relation_type == relation_type,
+        ],
+    )
+    for edge in edges:
+        edge.mark_deleted()
+
+    if new_from_entity_type is not None and new_from_entity_id is not None:
+        LineageService.create(
+            db=db,
+            from_entity_type=new_from_entity_type,
+            from_entity_id=new_from_entity_id,
+            to_entity_type=to_entity_type,
+            to_entity_id=to_entity_id,
+            relation_type=relation_type,
+        )
+
+
+@router.post("/models/{model_id}/update")
+def update_model_ui(
+    db: DBSession,
+    model_id: int,
+    name: str = Form(...),
+    experiment_id: int = Form(...),
+    framework: str = Form(""),
+    version: str = Form(""),
+    artifact_path: str = Form(""),
+    description: str = Form(""),
+) -> RedirectResponse:
+    model = db.get(Model, model_id)
+    if model is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if model.deleted_at is not None:
+        return RedirectResponse(
+            url=f"/ui/models/{model_id}?error=Archived+model+cannot+be+edited",
+            status_code=303,
+        )
+
+    experiment = db.get(Experiment, experiment_id)
+    if experiment is None or experiment.deleted_at is not None:
+        return RedirectResponse(
+            url=f"/ui/models/{model_id}?error=Experiment+does+not+exist",
+            status_code=303,
+        )
+
+    try:
+        model.name = name.strip()
+        model.experiment_id = experiment_id
+        model.framework = framework.strip() or None
+        model.version = version.strip() or None
+        model.artifact_path = artifact_path.strip() or None
+        model.description = description.strip() or None
+        _replace_lineage_link(
+            db,
+            to_entity_type="model",
+            to_entity_id=model.id,
+            relation_type="produces_model",
+            new_from_entity_type="experiment",
+            new_from_entity_id=experiment_id,
+        )
+        _commit_or_rollback(db)
+        return RedirectResponse(
+            url=f"/ui/models/{model_id}?message=Model+updated",
+            status_code=303,
+        )
+    except (ValueError, IntegrityError):
+        db.rollback()
+        return RedirectResponse(
+            url=f"/ui/models/{model_id}?error=Model+was+not+updated",
+            status_code=303,
+        )
+
+
+@router.post("/models/{model_id}/delete")
+def delete_model_ui(db: DBSession, model_id: int) -> RedirectResponse:
+    model = db.get(Model, model_id)
+    if model is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if model.deleted_at is None:
+        model.mark_deleted()
+        db.commit()
+    return RedirectResponse(url=f"/ui/models/{model_id}", status_code=303)
+
+
+@router.post("/models/{model_id}/restore")
+def restore_model_ui(db: DBSession, model_id: int) -> RedirectResponse:
+    model = db.get(Model, model_id)
+    if model is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if model.deleted_at is not None:
+        model.restore()
+        db.commit()
+    return RedirectResponse(url=f"/ui/models/{model_id}", status_code=303)
+
+
+@router.post("/schema-versions/{schema_version_id}/delete")
+def delete_schema_version_ui(db: DBSession, schema_version_id: int) -> RedirectResponse:
+    schema_version = db.get(SchemaVersion, schema_version_id)
+    if schema_version is None:
+        return RedirectResponse(url="/ui", status_code=303)
+
+    has_active_dataset_version = db.scalar(
+        select(DatasetVersion.id)
+        .where(
+            DatasetVersion.schema_version_id == schema_version_id,
+            DatasetVersion.deleted_at.is_(None),
+        )
+        .limit(1)
+    )
+    if has_active_dataset_version is not None:
+        return RedirectResponse(
+            url=f"/ui/schema-versions/{schema_version_id}?error=Cannot+archive+schema+version:+active+dataset+versions+reference+it",
+            status_code=303,
+        )
+
+    if schema_version.deleted_at is None:
+        schema_version.mark_deleted()
+        db.commit()
+    return RedirectResponse(url=f"/ui/schema-versions/{schema_version_id}", status_code=303)
+
+
+@router.post("/schema-versions/{schema_version_id}/restore")
+def restore_schema_version_ui(db: DBSession, schema_version_id: int) -> RedirectResponse:
+    schema_version = db.get(SchemaVersion, schema_version_id)
+    if schema_version is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if schema_version.deleted_at is not None:
+        schema_version.restore()
+        db.commit()
+    return RedirectResponse(url=f"/ui/schema-versions/{schema_version_id}", status_code=303)
+
+
+@router.post("/dataset-versions/{dataset_version_id}/delete")
+def delete_dataset_version_ui(db: DBSession, dataset_version_id: int) -> RedirectResponse:
+    dataset_version = db.get(DatasetVersion, dataset_version_id)
+    if dataset_version is None:
+        return RedirectResponse(url="/ui", status_code=303)
+
+    has_active_feature_set = db.scalar(
+        select(FeatureSet.id)
+        .where(
+            FeatureSet.dataset_version_id == dataset_version_id,
+            FeatureSet.deleted_at.is_(None),
+        )
+        .limit(1)
+    )
+    if has_active_feature_set is not None:
+        return RedirectResponse(
+            url=f"/ui/dataset-versions/{dataset_version_id}?error=Cannot+archive+dataset+version:+active+feature+sets+reference+it",
+            status_code=303,
+        )
+
+    if dataset_version.deleted_at is None:
+        dataset_version.mark_deleted()
+        db.commit()
+    return RedirectResponse(url=f"/ui/dataset-versions/{dataset_version_id}", status_code=303)
+
+
+@router.post("/dataset-versions/{dataset_version_id}/restore")
+def restore_dataset_version_ui(db: DBSession, dataset_version_id: int) -> RedirectResponse:
+    dataset_version = db.get(DatasetVersion, dataset_version_id)
+    if dataset_version is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if dataset_version.deleted_at is not None:
+        dataset_version.restore()
+        db.commit()
+    return RedirectResponse(url=f"/ui/dataset-versions/{dataset_version_id}", status_code=303)
+
+
+@router.post("/feature-sets/{feature_set_id}/delete")
+def delete_feature_set_ui(db: DBSession, feature_set_id: int) -> RedirectResponse:
+    feature_set = db.get(FeatureSet, feature_set_id)
+    if feature_set is None:
+        return RedirectResponse(url="/ui", status_code=303)
+
+    has_active_experiment = db.scalar(
+        select(Experiment.id)
+        .where(
+            Experiment.feature_set_id == feature_set_id,
+            Experiment.deleted_at.is_(None),
+        )
+        .limit(1)
+    )
+    if has_active_experiment is not None:
+        return RedirectResponse(
+            url=f"/ui/feature-sets/{feature_set_id}?error=Cannot+archive+feature+set:+active+experiments+reference+it",
+            status_code=303,
+        )
+
+    if feature_set.deleted_at is None:
+        feature_set.mark_deleted()
+        db.commit()
+    return RedirectResponse(url=f"/ui/feature-sets/{feature_set_id}", status_code=303)
+
+
+@router.post("/feature-sets/{feature_set_id}/restore")
+def restore_feature_set_ui(db: DBSession, feature_set_id: int) -> RedirectResponse:
+    feature_set = db.get(FeatureSet, feature_set_id)
+    if feature_set is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if feature_set.deleted_at is not None:
+        feature_set.restore()
+        db.commit()
+    return RedirectResponse(url=f"/ui/feature-sets/{feature_set_id}", status_code=303)
+
+
+@router.post("/schema-versions/{schema_version_id}/update")
+def update_schema_version_ui(
+    db: DBSession,
+    schema_version_id: int,
+    dataset_id: int = Form(...),
+    version_number: str = Form(...),
+    schema_json: str = Form(...),
+) -> RedirectResponse:
+    schema_version = db.get(SchemaVersion, schema_version_id)
+    if schema_version is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if schema_version.deleted_at is not None:
+        return RedirectResponse(
+            url=f"/ui/schema-versions/{schema_version_id}?error=Archived+schema+version+cannot+be+edited",
+            status_code=303,
+        )
+
+    try:
+        dataset = db.get(Dataset, dataset_id)
+        if dataset is None or dataset.deleted_at is not None:
+            raise ValueError("Selected dataset does not exist")
+
+        linked_dataset_versions = db.scalars(
+            select(DatasetVersion).where(DatasetVersion.schema_version_id == schema_version_id)
+        ).all()
+        if dataset_id != schema_version.dataset_id and linked_dataset_versions:
+            raise ValueError("Schema version is already used by dataset versions")
+
+        parsed_version = _parse_optional_int(version_number)
+        if parsed_version is None:
+            raise ValueError("Version number is required")
+        schema_version.dataset_id = dataset_id
+        schema_version.version_number = parsed_version
+        schema_version.schema_json = _parse_json_field(schema_json, "schema_json")
+        _replace_lineage_link(
+            db,
+            to_entity_type="schema_version",
+            to_entity_id=schema_version.id,
+            relation_type="has_schema_version",
+            new_from_entity_type="dataset",
+            new_from_entity_id=dataset_id,
+        )
+        _commit_or_rollback(db)
+        return RedirectResponse(
+            url=f"/ui/schema-versions/{schema_version_id}?message=Schema+version+updated",
+            status_code=303,
+        )
+    except (ValueError, IntegrityError):
+        db.rollback()
+        return RedirectResponse(
+            url=f"/ui/schema-versions/{schema_version_id}?error=Schema+version+was+not+updated",
+            status_code=303,
+        )
+
+
+@router.post("/dataset-versions/{dataset_version_id}/update")
+def update_dataset_version_ui(
+    db: DBSession,
+    dataset_version_id: int,
+    version_number: str = Form(...),
+    schema_version_id: str = Form(""),
+) -> RedirectResponse:
+    dataset_version = db.get(DatasetVersion, dataset_version_id)
+    if dataset_version is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if dataset_version.deleted_at is not None:
+        return RedirectResponse(
+            url=f"/ui/dataset-versions/{dataset_version_id}?error=Archived+dataset+version+cannot+be+edited",
+            status_code=303,
+        )
+
+    try:
+        parsed_version = _parse_optional_int(version_number)
+        if parsed_version is None:
+            raise ValueError("Version number is required")
+        schema_id = _parse_optional_int(schema_version_id)
+        if schema_id is not None:
+            schema_version = db.get(SchemaVersion, schema_id)
+            if schema_version is None or schema_version.deleted_at is not None:
+                raise ValueError("Selected schema version does not exist")
+            if schema_version.dataset_id != dataset_version.dataset_id:
+                raise ValueError("Schema version belongs to another dataset")
+
+        dataset_version.version_number = parsed_version
+        dataset_version.schema_version_id = schema_id
+        _replace_lineage_link(
+            db,
+            to_entity_type="dataset_version",
+            to_entity_id=dataset_version.id,
+            relation_type="defines_schema_for",
+            new_from_entity_type="schema_version" if schema_id is not None else None,
+            new_from_entity_id=schema_id,
+        )
+        _commit_or_rollback(db)
+        return RedirectResponse(
+            url=f"/ui/dataset-versions/{dataset_version_id}?message=Dataset+version+updated",
+            status_code=303,
+        )
+    except (ValueError, IntegrityError):
+        db.rollback()
+        return RedirectResponse(
+            url=f"/ui/dataset-versions/{dataset_version_id}?error=Dataset+version+was+not+updated",
+            status_code=303,
+        )
+
+
+@router.post("/feature-sets/{feature_set_id}/update")
+def update_feature_set_ui(
+    db: DBSession,
+    feature_set_id: int,
+    name: str = Form(...),
+    dataset_version_id: int = Form(...),
+    feature_schema_json: str = Form(...),
+) -> RedirectResponse:
+    feature_set = db.get(FeatureSet, feature_set_id)
+    if feature_set is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if feature_set.deleted_at is not None:
+        return RedirectResponse(
+            url=f"/ui/feature-sets/{feature_set_id}?error=Archived+feature+set+cannot+be+edited",
+            status_code=303,
+        )
+
+    dataset_version = db.get(DatasetVersion, dataset_version_id)
+    if dataset_version is None or dataset_version.deleted_at is not None:
+        return RedirectResponse(
+            url=f"/ui/feature-sets/{feature_set_id}?error=Dataset+version+does+not+exist",
+            status_code=303,
+        )
+
+    try:
+        feature_set.name = name.strip()
+        feature_set.dataset_version_id = dataset_version_id
+        feature_set.feature_schema_json = _parse_json_field(feature_schema_json, "feature_schema_json")
+        _replace_lineage_link(
+            db,
+            to_entity_type="feature_set",
+            to_entity_id=feature_set.id,
+            relation_type="produces_features",
+            new_from_entity_type="dataset_version",
+            new_from_entity_id=dataset_version_id,
+        )
+        _commit_or_rollback(db)
+        return RedirectResponse(
+            url=f"/ui/feature-sets/{feature_set_id}?message=Feature+set+updated",
+            status_code=303,
+        )
+    except (ValueError, IntegrityError):
+        db.rollback()
+        return RedirectResponse(
+            url=f"/ui/feature-sets/{feature_set_id}?error=Feature+set+was+not+updated",
+            status_code=303,
+        )
 
 
 @router.get("/experiments/{experiment_id}", response_class=HTMLResponse)

@@ -1,0 +1,119 @@
+{% extends "base.html.j2" %}
+{% import "components/displays.html.j2" as displays %}
+{% import "components/forms.html.j2" as forms %}
+
+{% block title %}Dataset version #{{ dataset_version.id }} · Metadata Atlas{% endblock title %}
+
+{% block body %}
+  <div class="page-shell">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <header class="hero">
+      <div class="hero-main">
+        <p class="eyebrow">
+          <a class="ghost-link" href="/ui">← Dashboard</a>
+          {% if dataset_version.deleted_at %}
+            <span class="status-pill deleted">Archived</span>
+          {% else %}
+            <span class="status-pill active">Active</span>
+          {% endif %}
+        </p>
+        <h1>Dataset version #{{ dataset_version.id }}</h1>
+        <p class="hero-copy">
+          Dataset:
+          {% if dataset %}
+            <strong>#{{ dataset.id }} · {{ dataset.name }}</strong> · data v{{ dataset_version.version_number }}
+          {% else %}
+            <span class="muted">unknown</span>
+          {% endif %}
+        </p>
+        <p class="hero-copy">
+          Schema:
+          {% if schema_version %}
+            <a class="ghost-link" href="/ui/schema-versions/{{ schema_version.id }}">schema #{{ schema_version.id }} · v{{ schema_version.version_number }}</a>
+          {% else %}
+            <span class="muted">not linked</span>
+          {% endif %}
+        </p>
+      </div>
+      <div class="hero-actions">
+        {% if dataset %}<a class="ghost-link" href="/ui/datasets/{{ dataset.id }}">Open dataset</a>{% endif %}
+        {% if dataset_version.deleted_at %}
+          <form method="post" action="/ui/dataset-versions/{{ dataset_version.id }}/restore">
+            <button type="submit">Restore version</button>
+          </form>
+        {% else %}
+          <form method="post" action="/ui/dataset-versions/{{ dataset_version.id }}/delete"
+                onsubmit="return confirm('Archive dataset version #{{ dataset_version.id }}?');">
+            <button type="submit" class="danger">Archive version</button>
+          </form>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if message %}<div class="notice success">{{ message }}</div>{% endif %}
+    {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
+
+    {% if not dataset_version.deleted_at %}
+      <section class="panel wide collapsible-panel">
+        <details class="edit-details">
+          <summary>
+            <span>
+              <strong>Edit fields</strong>
+              <small>Update data version and linked schema</small>
+            </span>
+          </summary>
+          <form method="post" action="/ui/dataset-versions/{{ dataset_version.id }}/update" class="stacked-form edit-form">
+            {{ forms.text_input('version_number', 'Version number', '1', dataset_version.version_number, True, 'number') }}
+            <label>
+              <span>Schema version</span>
+              <select name="schema_version_id">
+                <option value="">Not linked</option>
+                {% for candidate in schema_versions %}
+                  <option value="{{ candidate.id }}" {% if dataset_version.schema_version_id == candidate.id %}selected{% endif %}>
+                    #{{ candidate.id }} · {{ dataset_lookup.get(candidate.dataset_id, 'Unknown') }} · schema v{{ candidate.version_number }}
+                  </option>
+                {% endfor %}
+              </select>
+            </label>
+            <button type="submit">Save dataset version</button>
+          </form>
+        </details>
+      </section>
+    {% endif %}
+
+    {% set feature_rows = [] %}
+    {% for feature_set in feature_sets %}
+      {% set _ = feature_rows.append([
+        {'text': '#' ~ feature_set.id, 'url': '/ui/feature-sets/' ~ feature_set.id},
+        feature_set.name,
+        feature_set.local_created_at.strftime('%Y-%m-%d %H:%M') if feature_set.local_created_at else '—',
+        feature_set.deleted_at and 'archived' or 'active'
+      ]) %}
+    {% endfor %}
+
+    <section class="panel">
+      {{ displays.panel_header('Version', 'Metadata') }}
+      <div class="metadata-grid">
+        {{ displays.stat_card('Dataset', dataset.name if dataset else 'unknown') }}
+        {{ displays.stat_card('Data version', 'v' ~ dataset_version.version_number) }}
+        {{ displays.stat_card('Schema', schema_version and ('v' ~ schema_version.version_number) or '—') }}
+      </div>
+    </section>
+
+    <section class="panel">
+      {{ displays.panel_header('Feature Store', 'Feature sets built from this version') }}
+      {{ displays.entity_table(['ID', 'Name', 'Created', 'Status'], feature_rows, 'No feature sets yet') }}
+    </section>
+
+    {% if schema_version %}
+      <section class="panel wide">
+        {{ displays.panel_header('Schema', 'Schema snapshot') }}
+        <pre class="code-block">{{ schema_version.schema_json | tojson(indent=2) }}</pre>
+      </section>
+    {% endif %}
+
+    {% include "ui/_lineage_section.html.j2" %}
+  </div>
+{% endblock body %}

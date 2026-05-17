@@ -53,7 +53,7 @@
     {% set schema_rows = [] %}
     {% for sv in schema_versions %}
       {% set _ = schema_rows.append([
-        '#' ~ sv.id,
+        {'text': '#' ~ sv.id, 'url': '/ui/schema-versions/' ~ sv.id},
         'v' ~ sv.version_number,
         sv.local_created_at.strftime('%Y-%m-%d %H:%M') if sv.local_created_at else '—',
         sv.deleted_at and 'archived' or 'active'
@@ -64,7 +64,7 @@
     {% for v in dataset_versions %}
       {% set schema_label = 'schema #' ~ v.schema_version_id if v.schema_version_id else '—' %}
       {% set _ = version_rows.append([
-        '#' ~ v.id,
+        {'text': '#' ~ v.id, 'url': '/ui/dataset-versions/' ~ v.id},
         'v' ~ v.version_number,
         schema_label,
         v.local_created_at.strftime('%Y-%m-%d %H:%M') if v.local_created_at else '—',
@@ -75,7 +75,7 @@
     {% set feature_rows = [] %}
     {% for fs in feature_sets %}
       {% set _ = feature_rows.append([
-        '#' ~ fs.id,
+        {'text': '#' ~ fs.id, 'url': '/ui/feature-sets/' ~ fs.id},
         fs.name,
         'dataset version #' ~ fs.dataset_version_id,
         fs.local_created_at.strftime('%Y-%m-%d %H:%M') if fs.local_created_at else '—'

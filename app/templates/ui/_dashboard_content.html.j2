@@ -9,23 +9,23 @@
 
 {% set schema_rows = [] %}
 {% for schema_version in schema_versions %}
-  {% set _ = schema_rows.append(['#' ~ schema_version.id, dataset_lookup.get(schema_version.dataset_id, 'Unknown'), 'v' ~ schema_version.version_number]) %}
+  {% set _ = schema_rows.append([{'text': '#' ~ schema_version.id, 'url': '/ui/schema-versions/' ~ schema_version.id}, dataset_lookup.get(schema_version.dataset_id, 'Unknown'), 'v' ~ schema_version.version_number]) %}
 {% endfor %}
 
 {% set dataset_version_rows = [] %}
 {% for version in dataset_versions %}
-  {% set _ = dataset_version_rows.append(['#' ~ version.id, dataset_lookup.get(version.dataset_id, 'Unknown'), 'v' ~ version.version_number]) %}
+  {% set _ = dataset_version_rows.append([{'text': '#' ~ version.id, 'url': '/ui/dataset-versions/' ~ version.id}, dataset_lookup.get(version.dataset_id, 'Unknown'), 'v' ~ version.version_number]) %}
 {% endfor %}
 
 {% set feature_rows = [] %}
 {% for feature_set in feature_sets %}
-  {% set _ = feature_rows.append(['#' ~ feature_set.id, feature_set.name, dataset_version_lookup.get(feature_set.dataset_version_id, 'Unknown')]) %}
+  {% set _ = feature_rows.append([{'text': '#' ~ feature_set.id, 'url': '/ui/feature-sets/' ~ feature_set.id}, feature_set.name, dataset_version_lookup.get(feature_set.dataset_version_id, 'Unknown')]) %}
 {% endfor %}
 
 
 {% set model_rows = [] %}
 {% for m in models %}
-  {% set _ = model_rows.append(['#' ~ m.id, m.name, m.framework or '—', experiment_lookup.get(m.experiment_id, 'Unknown')]) %}
+  {% set _ = model_rows.append([{'text': '#' ~ m.id, 'url': '/ui/models/' ~ m.id}, m.name, m.framework or '—', experiment_lookup.get(m.experiment_id, 'Unknown')]) %}
 {% endfor %}
 
 <main id="dashboard-content" class="dashboard-grid">
