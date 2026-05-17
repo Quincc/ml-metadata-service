@@ -1,5 +1,6 @@
 {% extends "base.html.j2" %}
 {% import "components/displays.html.j2" as displays %}
+{% import "components/forms.html.j2" as forms %}
 
 {% block title %}{{ experiment.name }} · Metadata Atlas{% endblock title %}
 
@@ -9,7 +10,7 @@
     <div class="ambient ambient-right"></div>
 
     <header class="hero">
-      <div>
+      <div class="hero-main">
         <p class="eyebrow">
           <a class="ghost-link" href="/ui">← Dashboard</a>
           {% if experiment.deleted_at %}
@@ -42,8 +43,8 @@
       <div class="hero-actions">
         <a class="ghost-link" href="/experiments/{{ experiment.id }}/report" download>Export Markdown</a>
         {% if not experiment.deleted_at %}
-          <form method="post" action="/ui/experiments/{{ experiment.id }}/status" class="form-inline">
-            <select name="status">
+          <form method="post" action="/ui/experiments/{{ experiment.id }}/status" class="status-form">
+            <select name="status" aria-label="Experiment status">
               {% for s in ['created', 'running', 'finished', 'failed'] %}
                 <option value="{{ s }}" {% if experiment.status == s %}selected{% endif %}>{{ s }}</option>
               {% endfor %}
@@ -66,6 +67,27 @@
 
     {% if message %}<div class="notice success">{{ message }}</div>{% endif %}
     {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
+
+    {% if not experiment.deleted_at %}
+      <section class="panel wide collapsible-panel">
+        <details class="edit-details">
+          <summary>
+            <span>
+              <strong>Edit fields</strong>
+              <small>Update name, artifacts, parameters and metrics</small>
+            </span>
+          </summary>
+          <form method="post" action="/ui/experiments/{{ experiment.id }}/update" class="stacked-form edit-form">
+            {{ forms.text_input('name', 'Name', 'titanic_logreg_basic_v1', experiment.name, True) }}
+            {{ forms.text_input('notebook_url', 'Notebook URL', 'https://...', experiment.notebook_url or '') }}
+            {{ forms.text_input('report_path', 'Report path', 'reports/titanic_logreg.md', experiment.report_path or '') }}
+            {{ forms.textarea('parameters_json', 'Parameters JSON', experiment.parameters_json | tojson(indent=2), required=True, css_class='code-input') }}
+            {{ forms.textarea('metrics_json', 'Metrics JSON', experiment.metrics_json | tojson(indent=2), required=True, css_class='code-input') }}
+            <button type="submit">Save experiment fields</button>
+          </form>
+        </details>
+      </section>
+    {% endif %}
 
     {% if experiment.notebook_url or experiment.report_path %}
       <section class="panel">

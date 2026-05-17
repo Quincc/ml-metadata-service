@@ -507,6 +507,7 @@ def dataset_detail(
     lineage_graph = _build_lineage_graph(db, "dataset", dataset_id)
 
     context = {
+        **_load_dashboard_data(db),
         "request": request,
         "dataset": dataset,
         "source": source,
@@ -519,7 +520,6 @@ def dataset_detail(
         "lineage_error": None,
         "selected_entity_type": "dataset",
         "selected_entity_id": dataset_id,
-        **_load_dashboard_data(db),
     }
     return templates.TemplateResponse("ui/dataset_detail.html.j2", context)
 
@@ -694,6 +694,44 @@ def update_experiment_status_ui(
     experiment.status = status
     db.commit()
     return RedirectResponse(url=f"/ui/experiments/{experiment_id}", status_code=303)
+
+
+@router.post("/experiments/{experiment_id}/update")
+def update_experiment_ui(
+    db: DBSession,
+    experiment_id: int,
+    name: str = Form(...),
+    parameters_json: str = Form(...),
+    metrics_json: str = Form(...),
+    notebook_url: str = Form(""),
+    report_path: str = Form(""),
+) -> RedirectResponse:
+    experiment = db.get(Experiment, experiment_id)
+    if experiment is None:
+        return RedirectResponse(url="/ui", status_code=303)
+    if experiment.deleted_at is not None:
+        return RedirectResponse(
+            url=f"/ui/experiments/{experiment_id}?error=Archived+experiment+cannot+be+edited",
+            status_code=303,
+        )
+
+    try:
+        experiment.name = name.strip()
+        experiment.parameters_json = _parse_json_field(parameters_json, "parameters_json")
+        experiment.metrics_json = _parse_json_field(metrics_json, "metrics_json")
+        experiment.notebook_url = notebook_url.strip() or None
+        experiment.report_path = report_path.strip() or None
+        _commit_or_rollback(db)
+        return RedirectResponse(
+            url=f"/ui/experiments/{experiment_id}?message=Experiment+updated",
+            status_code=303,
+        )
+    except (ValueError, IntegrityError):
+        db.rollback()
+        return RedirectResponse(
+            url=f"/ui/experiments/{experiment_id}?error=Experiment+was+not+updated",
+            status_code=303,
+        )
 
 
 _ENTITY_MODELS = {
