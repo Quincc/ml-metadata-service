@@ -1,0 +1,115 @@
+{% extends "base.html.j2" %}
+{% import "components/displays.html.j2" as displays %}
+
+{% block title %}Compare versions · Metadata Atlas{% endblock title %}
+
+{% block body %}
+  <div class="page-shell">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <header class="hero">
+      <div class="hero-main">
+        <p class="eyebrow"><a class="ghost-link" href="/ui">← Dashboard</a></p>
+        <h1>Compare versions</h1>
+        <p class="hero-copy">
+          Сравните версии схем или наборы признаков, чтобы быстро увидеть добавленные, удалённые и изменённые поля.
+        </p>
+      </div>
+      <div class="hero-actions">
+        <a class="ghost-link" href="/ui/archive">Archive</a>
+        <a class="ghost-link" href="/ui/audit">Audit</a>
+      </div>
+    </header>
+
+    {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
+
+    <section class="panel wide">
+      {{ displays.panel_header('Version diff', 'Select metadata definitions to compare', 'Choose whether you want to compare data schemas or feature definitions, then select two versions.') }}
+      <form method="get" action="/ui/compare" class="compare-form">
+        <label>
+          <span>What to compare</span>
+          <select name="compare_type">
+            <option value="schema" {% if compare_type == 'schema' %}selected{% endif %}>Data schema definitions</option>
+            <option value="feature_set" {% if compare_type == 'feature_set' %}selected{% endif %}>Feature set definitions</option>
+          </select>
+        </label>
+        <label>
+          <span>Base version</span>
+          <select name="left_id" required>
+            <option value="">Select base version</option>
+            {% if compare_type == 'feature_set' %}
+              {% for item in feature_sets %}
+                <option value="{{ item.id }}" {% if left_id == item.id %}selected{% endif %}>#{{ item.id }} · {{ item.name }}</option>
+              {% endfor %}
+            {% else %}
+              {% for item in schema_versions %}
+                <option value="{{ item.id }}" {% if left_id == item.id %}selected{% endif %}>#{{ item.id }} · {{ dataset_lookup.get(item.dataset_id, 'Unknown') }} · schema v{{ item.version_number }}</option>
+              {% endfor %}
+            {% endif %}
+          </select>
+        </label>
+        <label>
+          <span>New version</span>
+          <select name="right_id" required>
+            <option value="">Select new version</option>
+            {% if compare_type == 'feature_set' %}
+              {% for item in feature_sets %}
+                <option value="{{ item.id }}" {% if right_id == item.id %}selected{% endif %}>#{{ item.id }} · {{ item.name }}</option>
+              {% endfor %}
+            {% else %}
+              {% for item in schema_versions %}
+                <option value="{{ item.id }}" {% if right_id == item.id %}selected{% endif %}>#{{ item.id }} · {{ dataset_lookup.get(item.dataset_id, 'Unknown') }} · schema v{{ item.version_number }}</option>
+              {% endfor %}
+            {% endif %}
+          </select>
+        </label>
+        <button type="submit">Compare</button>
+      </form>
+    </section>
+
+    {% if result %}
+      <section class="panel wide compare-summary">
+        {{ displays.panel_header('Diff result', 'Changes between selected versions') }}
+        <div class="metadata-grid">
+          {{ displays.stat_card('Added', result.added | length) }}
+          {{ displays.stat_card('Removed', result.removed | length) }}
+          {{ displays.stat_card('Changed', result.changed | length) }}
+          {{ displays.stat_card('Unchanged', result.unchanged | length) }}
+        </div>
+      </section>
+
+      <section class="panel compare-panel added">
+        {{ displays.panel_header('Added', 'Only in right version') }}
+        {% for item in result.added %}
+          <article class="diff-card"><strong>{{ item.name }}</strong><pre>{{ item.right | tojson(indent=2) }}</pre></article>
+        {% else %}<p class="muted">No added items</p>{% endfor %}
+      </section>
+
+      <section class="panel compare-panel removed">
+        {{ displays.panel_header('Removed', 'Only in left version') }}
+        {% for item in result.removed %}
+          <article class="diff-card"><strong>{{ item.name }}</strong><pre>{{ item.left | tojson(indent=2) }}</pre></article>
+        {% else %}<p class="muted">No removed items</p>{% endfor %}
+      </section>
+
+      <section class="panel compare-panel changed">
+        {{ displays.panel_header('Changed', 'Present in both, but definition changed') }}
+        {% for item in result.changed %}
+          <article class="diff-card split">
+            <strong>{{ item.name }}</strong>
+            <div><span>Left</span><pre>{{ item.left | tojson(indent=2) }}</pre></div>
+            <div><span>Right</span><pre>{{ item.right | tojson(indent=2) }}</pre></div>
+          </article>
+        {% else %}<p class="muted">No changed items</p>{% endfor %}
+      </section>
+
+      <section class="panel compare-panel unchanged">
+        {{ displays.panel_header('Unchanged', 'Same definition in both versions') }}
+        {% for item in result.unchanged %}
+          <article class="diff-card compact"><strong>{{ item.name }}</strong></article>
+        {% else %}<p class="muted">No unchanged items</p>{% endfor %}
+      </section>
+    {% endif %}
+  </div>
+{% endblock body %}

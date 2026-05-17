@@ -9,13 +9,20 @@
   {{ displays.panel_header(
     'Live Graph Lookup',
     'Lineage Explorer',
-    'Выберите сущность и получите все связанные узлы и ребра происхождения данных.'
+    'Выберите сущность, режим анализа и получите нужный срез происхождения данных.'
   ) }}
-  <form class="form-inline" hx-get="/ui/lineage" hx-target="#lineage-section" hx-swap="outerHTML">
+  <form class="form-inline lineage-form" hx-get="/ui/lineage" hx-target="#lineage-section" hx-swap="outerHTML">
     {{ forms.select('entity_type', 'Entity type', lineage_entity_types, selected=selected_entity_type, required=True, placeholder='Select entity') }}
     {{ forms.text_input('entity_id', 'Entity id', '1', selected_entity_id or '', True, 'number') }}
+    {{ forms.select('lineage_mode', 'Mode', lineage_modes, selected=selected_lineage_mode | default('full'), required=True) }}
     <button type="submit">Show lineage</button>
   </form>
+  <div class="lineage-mode-help">
+    <span><strong>Full</strong> all connected metadata</span>
+    <span><strong>Direct</strong> nearest edges only</span>
+    <span><strong>Upstream</strong> inputs and parents</span>
+    <span><strong>Downstream</strong> dependent objects</span>
+  </div>
 
   <div class="lineage-board">
     {% if lineage_graph %}
@@ -51,7 +58,21 @@
           'label': edge.relation_type
         }) %}
       {% endfor %}
-      <div id="lineage-graph" data-root="{{ lineage_graph.root_entity_type }}:{{ lineage_graph.root_entity_id }}"></div>
+      <div id="lineage-graph" data-root="{{ lineage_graph.root_entity_type }}:{{ lineage_graph.root_entity_id }}" data-mode="{{ selected_lineage_mode | default('full') }}"></div>
+      <div class="lineage-legend">
+        {% for entity in lineage_entity_types %}
+          <span class="legend-item legend-{{ entity }}">{{ entity }}</span>
+        {% endfor %}
+      </div>
+      <div class="lineage-relation-legend">
+        <span>source_of</span>
+        <span>has_schema_version</span>
+        <span>has_version</span>
+        <span>defines_schema_for</span>
+        <span>produces_features</span>
+        <span>used_in_experiment</span>
+        <span>produces_model</span>
+      </div>
       <script type="application/json" id="lineage-graph-nodes">{{ vis_nodes | tojson }}</script>
       <script type="application/json" id="lineage-graph-edges">{{ vis_edges | tojson }}</script>
       <script>
@@ -101,7 +122,7 @@
             if (parts.length !== 2) return;
             if (window.htmx) {
               window.htmx.ajax('GET',
-                '/ui/lineage?entity_type=' + encodeURIComponent(parts[0]) + '&entity_id=' + encodeURIComponent(parts[1]),
+                '/ui/lineage?entity_type=' + encodeURIComponent(parts[0]) + '&entity_id=' + encodeURIComponent(parts[1]) + '&lineage_mode=' + encodeURIComponent(container.dataset.mode || 'full'),
                 { target: '#lineage-section', swap: 'outerHTML' }
               );
             }

@@ -35,6 +35,8 @@ LINEAGE_ENTITY_TYPES = [
     "model",
 ]
 
+LINEAGE_MODES = ["full", "direct", "upstream", "downstream"]
+
 SOURCE_TYPE_OPTIONS = [
     "csv",
     "parquet",
@@ -63,6 +65,44 @@ def _parse_optional_int(value: str) -> int | None:
     if not value:
         return None
     return int(value)
+
+
+def _json_items(payload: dict[str, Any], preferred_key: str) -> dict[str, Any]:
+    raw_items = payload.get(preferred_key, [])
+    result: dict[str, Any] = {}
+
+    if isinstance(raw_items, list):
+        for item in raw_items:
+            if isinstance(item, dict):
+                name = item.get("name")
+                if name is not None:
+                    result[str(name)] = item
+            else:
+                result[str(item)] = item
+    elif isinstance(raw_items, dict):
+        result = {str(key): value for key, value in raw_items.items()}
+
+    return result
+
+
+def _compare_json_items(left: dict[str, Any], right: dict[str, Any], preferred_key: str) -> dict[str, list[dict[str, Any]]]:
+    left_items = _json_items(left, preferred_key)
+    right_items = _json_items(right, preferred_key)
+    left_names = set(left_items)
+    right_names = set(right_items)
+
+    added = sorted(right_names - left_names)
+    removed = sorted(left_names - right_names)
+    common = sorted(left_names & right_names)
+    changed = [name for name in common if left_items[name] != right_items[name]]
+    unchanged = [name for name in common if left_items[name] == right_items[name]]
+
+    return {
+        "added": [{"name": name, "right": right_items[name]} for name in added],
+        "removed": [{"name": name, "left": left_items[name]} for name in removed],
+        "changed": [{"name": name, "left": left_items[name], "right": right_items[name]} for name in changed],
+        "unchanged": [{"name": name, "left": left_items[name]} for name in unchanged],
+    }
 
 
 def _load_dashboard_data(db: DBSession) -> dict[str, Any]:
@@ -127,7 +167,109 @@ def _load_dashboard_data(db: DBSession) -> dict[str, Any]:
         "experiment_lookup": {experiment.id: experiment.name for experiment in experiments},
         "model_lookup": {model.id: model.name for model in models},
         "lineage_entity_types": LINEAGE_ENTITY_TYPES,
+        "lineage_modes": LINEAGE_MODES,
         "source_type_options": SOURCE_TYPE_OPTIONS,
+    }
+
+
+def _build_report_overviews(data: dict[str, Any]) -> dict[str, dict[int, dict[str, Any]]]:
+    sources = {source.id: source for source in data["sources"]}
+    datasets = {dataset.id: dataset for dataset in data["datasets"]}
+    schema_versions = data["schema_versions"]
+    dataset_versions = data["dataset_versions"]
+    feature_sets = data["feature_sets"]
+    experiments = data["experiments"]
+    models = data["models"]
+
+    versions_by_dataset: dict[int, list[DatasetVersion]] = {}
+    schemas_by_dataset: dict[int, list[SchemaVersion]] = {}
+    models_by_experiment: dict[int, list[Model]] = {}
+
+    for version in dataset_versions:
+        versions_by_dataset.setdefault(version.dataset_id, []).append(version)
+    for schema_version in schema_versions:
+        schemas_by_dataset.setdefault(schema_version.dataset_id, []).append(schema_version)
+    for model in models:
+        models_by_experiment.setdefault(model.experiment_id, []).append(model)
+
+    dataset_reports: dict[int, dict[str, Any]] = {}
+    for dataset in data["datasets"]:
+        versions = versions_by_dataset.get(dataset.id, [])
+        version_ids = {version.id for version in versions}
+        related_features = [feature for feature in feature_sets if feature.dataset_version_id in version_ids]
+        source = sources.get(dataset.source_id)
+        dataset_reports[dataset.id] = {
+            "summary": (
+                f"Source: {source.name if source else 'not linked'}; "
+                f"schema versions: {len(schemas_by_dataset.get(dataset.id, []))}; "
+                f"dataset versions: {len(versions)}; "
+                f"feature sets: {len(related_features)}"
+            ),
+            "includes": [
+                "Dataset metadata",
+                "Source metadata",
+                "Schema versions",
+                "Dataset versions",
+                "Linked feature sets",
+            ],
+            "detail_url": f"/ui/datasets/{dataset.id}",
+        }
+
+    feature_by_id = {feature.id: feature for feature in feature_sets}
+    version_by_id = {version.id: version for version in dataset_versions}
+
+    experiment_reports: dict[int, dict[str, Any]] = {}
+    for experiment in experiments:
+        feature_set = feature_by_id.get(experiment.feature_set_id)
+        dataset_version = version_by_id.get(feature_set.dataset_version_id) if feature_set else None
+        dataset = datasets.get(dataset_version.dataset_id) if dataset_version else None
+        experiment_reports[experiment.id] = {
+            "summary": (
+                f"Status: {experiment.status}; "
+                f"feature set: {feature_set.name if feature_set else 'not linked'}; "
+                f"dataset: {dataset.name if dataset else 'not linked'}; "
+                f"models: {len(models_by_experiment.get(experiment.id, []))}"
+            ),
+            "includes": [
+                "Experiment status",
+                "Input feature set",
+                "Parameters JSON",
+                "Metrics table",
+                "Produced models",
+            ],
+            "detail_url": f"/ui/experiments/{experiment.id}",
+        }
+
+    experiment_by_id = {experiment.id: experiment for experiment in experiments}
+
+    model_reports: dict[int, dict[str, Any]] = {}
+    for model in models:
+        experiment = experiment_by_id.get(model.experiment_id)
+        feature_set = feature_by_id.get(experiment.feature_set_id) if experiment else None
+        dataset_version = version_by_id.get(feature_set.dataset_version_id) if feature_set else None
+        dataset = datasets.get(dataset_version.dataset_id) if dataset_version else None
+        source = sources.get(dataset.source_id) if dataset else None
+        model_reports[model.id] = {
+            "summary": (
+                f"Framework: {model.framework or 'not set'}; "
+                f"experiment: {experiment.name if experiment else 'not linked'}; "
+                f"dataset: {dataset.name if dataset else 'not linked'}; "
+                f"source: {source.name if source else 'not linked'}"
+            ),
+            "includes": [
+                "Source to model pipeline chain",
+                "Dataset and schema versions",
+                "Feature schema",
+                "Experiment parameters",
+                "Metrics and model artifact",
+            ],
+            "detail_url": f"/ui/models/{model.id}",
+        }
+
+    return {
+        "datasets": dataset_reports,
+        "experiments": experiment_reports,
+        "models": model_reports,
     }
 
 
@@ -141,6 +283,7 @@ def _render_dashboard(
     lineage_error: str | None = None,
     selected_entity_type: str = "dataset",
     selected_entity_id: int | None = None,
+    selected_lineage_mode: str = "full",
     partial: str = "dashboard",
 ) -> HTMLResponse:
     context = {
@@ -151,6 +294,7 @@ def _render_dashboard(
         "lineage_error": lineage_error,
         "selected_entity_type": selected_entity_type,
         "selected_entity_id": selected_entity_id,
+        "selected_lineage_mode": selected_lineage_mode,
         **_load_dashboard_data(db),
     }
     template_map = {
@@ -442,7 +586,11 @@ def view_lineage_ui(
     db: DBSession,
     entity_type: str,
     entity_id: int,
+    lineage_mode: str = "full",
 ) -> HTMLResponse:
+    if lineage_mode not in LINEAGE_MODES:
+        lineage_mode = "full"
+
     if entity_type not in LINEAGE_ENTITY_TYPES:
         return _render_dashboard(
             request,
@@ -450,10 +598,11 @@ def view_lineage_ui(
             lineage_error="Unsupported entity type for lineage lookup",
             selected_entity_type=entity_type,
             selected_entity_id=entity_id,
+            selected_lineage_mode=lineage_mode,
             partial="lineage",
         )
 
-    nodes, edges = LineageService.get_graph(db=db, entity_type=entity_type, entity_id=entity_id)
+    nodes, edges = LineageService.get_graph(db=db, entity_type=entity_type, entity_id=entity_id, mode=lineage_mode)
     lineage_graph = LineageGraph(
         root_entity_type=entity_type,
         root_entity_id=entity_id,
@@ -466,18 +615,198 @@ def view_lineage_ui(
         lineage_graph=lineage_graph,
         selected_entity_type=entity_type,
         selected_entity_id=entity_id,
+        selected_lineage_mode=lineage_mode,
         partial="lineage",
     )
 
 
-def _build_lineage_graph(db: DBSession, entity_type: str, entity_id: int) -> LineageGraph:
-    nodes, edges = LineageService.get_graph(db=db, entity_type=entity_type, entity_id=entity_id)
+def _build_lineage_graph(db: DBSession, entity_type: str, entity_id: int, mode: str = "full") -> LineageGraph:
+    nodes, edges = LineageService.get_graph(db=db, entity_type=entity_type, entity_id=entity_id, mode=mode)
     return LineageGraph(
         root_entity_type=entity_type,
         root_entity_id=entity_id,
         nodes=[LineageNode(entity_type=node_type, entity_id=node_id) for node_type, node_id in nodes],
         edges=[LineageRead.model_validate(edge) for edge in edges],
     )
+
+
+def _dependency_item(kind: str, title: str, meta: str, url: str) -> dict[str, str]:
+    return {"kind": kind, "title": title, "meta": meta, "url": url}
+
+
+def _dependency_error_url(path: str, message: str) -> str:
+    return f"{path}?error={message.replace(' ', '+')}"
+
+
+def _entity_detail_url(entity_type: str, entity_id: int) -> str:
+    routes = {
+        "dataset": "/ui/datasets/{id}",
+        "schema_version": "/ui/schema-versions/{id}",
+        "dataset_version": "/ui/dataset-versions/{id}",
+        "feature_set": "/ui/feature-sets/{id}",
+        "experiment": "/ui/experiments/{id}",
+        "model": "/ui/models/{id}",
+    }
+    route = routes.get(entity_type)
+    return route.format(id=entity_id) if route else ""
+
+
+def _search_item(kind: str, title: str, meta: str, url: str) -> dict[str, str]:
+    return {"kind": kind, "title": title, "meta": meta, "url": url}
+
+
+def _build_global_search_results(db: DBSession, query: str) -> list[dict[str, str]]:
+    query = query.strip()
+    if not query:
+        return []
+
+    like_query = f"%{query}%"
+    results: list[dict[str, str]] = []
+
+    datasets = db.scalars(
+        select(Dataset)
+        .where(Dataset.deleted_at.is_(None), Dataset.name.ilike(like_query))
+        .order_by(Dataset.id.desc())
+        .limit(12)
+    ).all()
+    results.extend(
+        _search_item("Dataset", dataset.name, f"#{dataset.id} · source #{dataset.source_id}", f"/ui/datasets/{dataset.id}")
+        for dataset in datasets
+    )
+
+    feature_sets = db.scalars(
+        select(FeatureSet)
+        .where(FeatureSet.deleted_at.is_(None), FeatureSet.name.ilike(like_query))
+        .order_by(FeatureSet.id.desc())
+        .limit(12)
+    ).all()
+    results.extend(
+        _search_item("Feature Set", feature_set.name, f"#{feature_set.id} · data version #{feature_set.dataset_version_id}", f"/ui/feature-sets/{feature_set.id}")
+        for feature_set in feature_sets
+    )
+
+    experiments = db.scalars(
+        select(Experiment)
+        .where(Experiment.deleted_at.is_(None), Experiment.name.ilike(like_query))
+        .order_by(Experiment.id.desc())
+        .limit(12)
+    ).all()
+    results.extend(
+        _search_item("Experiment", experiment.name, f"#{experiment.id} · {experiment.status}", f"/ui/experiments/{experiment.id}")
+        for experiment in experiments
+    )
+
+    models = db.scalars(
+        select(Model)
+        .where(Model.deleted_at.is_(None), Model.name.ilike(like_query))
+        .order_by(Model.id.desc())
+        .limit(12)
+    ).all()
+    results.extend(
+        _search_item("Model", model.name, f"#{model.id} · {model.framework or 'framework not set'}", f"/ui/models/{model.id}")
+        for model in models
+    )
+
+    if query.isdigit():
+        entity_id = int(query)
+        schema_version = db.get(SchemaVersion, entity_id)
+        if schema_version is not None and schema_version.deleted_at is None:
+            results.append(
+                _search_item("Schema Version", f"schema v{schema_version.version_number}", f"#{schema_version.id} · dataset #{schema_version.dataset_id}", f"/ui/schema-versions/{schema_version.id}")
+            )
+
+        dataset_version = db.get(DatasetVersion, entity_id)
+        if dataset_version is not None and dataset_version.deleted_at is None:
+            results.append(
+                _search_item("Dataset Version", f"data v{dataset_version.version_number}", f"#{dataset_version.id} · dataset #{dataset_version.dataset_id}", f"/ui/dataset-versions/{dataset_version.id}")
+            )
+
+    return results
+
+
+def _entity_display_item(
+    db: DBSession,
+    entity_type: str,
+    entity_id: int,
+    relation_type: str,
+) -> dict[str, str]:
+    title = f"{entity_type.replace('_', ' ')} #{entity_id}"
+    meta = f"#{entity_id}"
+
+    if entity_type == "source":
+        obj = db.get(DataSource, entity_id)
+        if obj is not None:
+            title = obj.name
+            meta = f"#{obj.id} · {obj.source_type}"
+    elif entity_type == "dataset":
+        obj = db.get(Dataset, entity_id)
+        if obj is not None:
+            title = obj.name
+            meta = f"#{obj.id}"
+    elif entity_type == "schema_version":
+        obj = db.get(SchemaVersion, entity_id)
+        if obj is not None:
+            title = f"schema v{obj.version_number}"
+            meta = f"#{obj.id} · dataset #{obj.dataset_id}"
+    elif entity_type == "dataset_version":
+        obj = db.get(DatasetVersion, entity_id)
+        if obj is not None:
+            title = f"data v{obj.version_number}"
+            meta = f"#{obj.id} · dataset #{obj.dataset_id}"
+    elif entity_type == "feature_set":
+        obj = db.get(FeatureSet, entity_id)
+        if obj is not None:
+            title = obj.name
+            meta = f"#{obj.id} · data version #{obj.dataset_version_id}"
+    elif entity_type == "experiment":
+        obj = db.get(Experiment, entity_id)
+        if obj is not None:
+            title = obj.name
+            meta = f"#{obj.id} · {obj.status}"
+    elif entity_type == "model":
+        obj = db.get(Model, entity_id)
+        if obj is not None:
+            title = obj.name
+            meta = f"#{obj.id} · {obj.framework or 'framework not set'}"
+
+    return {
+        "kind": entity_type.replace("_", " ").title(),
+        "title": title,
+        "meta": meta,
+        "relation": relation_type,
+        "url": _entity_detail_url(entity_type, entity_id),
+    }
+
+
+def _direct_lineage_dependencies(
+    db: DBSession,
+    entity_type: str,
+    entity_id: int,
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    upstream_edges = LineageService.filter_all(
+        db=db,
+        where_clause=[
+            LineageEdge.to_entity_type == entity_type,
+            LineageEdge.to_entity_id == entity_id,
+        ],
+    )
+    downstream_edges = LineageService.filter_all(
+        db=db,
+        where_clause=[
+            LineageEdge.from_entity_type == entity_type,
+            LineageEdge.from_entity_id == entity_id,
+        ],
+    )
+
+    upstream = [
+        _entity_display_item(db, edge.from_entity_type, edge.from_entity_id, edge.relation_type)
+        for edge in upstream_edges
+    ]
+    downstream = [
+        _entity_display_item(db, edge.to_entity_type, edge.to_entity_id, edge.relation_type)
+        for edge in downstream_edges
+    ]
+    return upstream, downstream
 
 
 @router.get("/datasets/{dataset_id}", response_class=HTMLResponse)
@@ -512,8 +841,24 @@ def dataset_detail(
             .where(FeatureSet.dataset_version_id.in_(version_ids))
             .order_by(FeatureSet.id.desc())
         ).all()
+    archive_dependencies = [
+        _dependency_item("Schema Version", f"schema v{sv.version_number}", f"#{sv.id}", f"/ui/schema-versions/{sv.id}")
+        for sv in schema_versions
+        if sv.deleted_at is None
+    ]
+    archive_dependencies.extend(
+        _dependency_item("Dataset Version", f"data v{v.version_number}", f"#{v.id}", f"/ui/dataset-versions/{v.id}")
+        for v in dataset_versions
+        if v.deleted_at is None
+    )
+    archive_dependencies.extend(
+        _dependency_item("Feature Set", fs.name, f"#{fs.id}", f"/ui/feature-sets/{fs.id}")
+        for fs in feature_sets
+        if fs.deleted_at is None
+    )
     source = db.get(DataSource, dataset.source_id)
     lineage_graph = _build_lineage_graph(db, "dataset", dataset_id)
+    lineage_upstream, lineage_downstream = _direct_lineage_dependencies(db, "dataset", dataset_id)
 
     context = {
         **_load_dashboard_data(db),
@@ -523,6 +868,9 @@ def dataset_detail(
         "schema_versions": schema_versions,
         "dataset_versions": dataset_versions,
         "feature_sets": feature_sets,
+        "archive_dependencies": archive_dependencies,
+        "lineage_upstream": lineage_upstream,
+        "lineage_downstream": lineage_downstream,
         "message": message,
         "error": error,
         "lineage_graph": lineage_graph,
@@ -625,6 +973,23 @@ def delete_dataset_ui(db: DBSession, dataset_id: int) -> RedirectResponse:
     dataset = db.get(Dataset, dataset_id)
     if dataset is None:
         return RedirectResponse(url="/ui", status_code=303)
+
+    has_schema = db.scalar(
+        select(SchemaVersion.id)
+        .where(SchemaVersion.dataset_id == dataset_id, SchemaVersion.deleted_at.is_(None))
+        .limit(1)
+    )
+    has_version = db.scalar(
+        select(DatasetVersion.id)
+        .where(DatasetVersion.dataset_id == dataset_id, DatasetVersion.deleted_at.is_(None))
+        .limit(1)
+    )
+    if has_schema is not None or has_version is not None:
+        return RedirectResponse(
+            url=_dependency_error_url(f"/ui/datasets/{dataset_id}", "Cannot archive dataset: active versions reference it"),
+            status_code=303,
+        )
+
     if dataset.deleted_at is None:
         dataset.mark_deleted()
         db.commit()
@@ -662,7 +1027,13 @@ def schema_version_detail(
         .where(DatasetVersion.schema_version_id == schema_version_id)
         .order_by(DatasetVersion.version_number.desc())
     ).all()
+    archive_dependencies = [
+        _dependency_item("Dataset Version", f"data v{version.version_number}", f"#{version.id}", f"/ui/dataset-versions/{version.id}")
+        for version in dataset_versions
+        if version.deleted_at is None
+    ]
     lineage_graph = _build_lineage_graph(db, "schema_version", schema_version_id)
+    lineage_upstream, lineage_downstream = _direct_lineage_dependencies(db, "schema_version", schema_version_id)
 
     context = {
         **_load_dashboard_data(db),
@@ -670,6 +1041,9 @@ def schema_version_detail(
         "schema_version": schema_version,
         "dataset": dataset,
         "dataset_versions": dataset_versions,
+        "archive_dependencies": archive_dependencies,
+        "lineage_upstream": lineage_upstream,
+        "lineage_downstream": lineage_downstream,
         "message": message,
         "error": error,
         "lineage_graph": lineage_graph,
@@ -712,7 +1086,13 @@ def dataset_version_detail(
             .where(SchemaVersion.dataset_id == dataset.id, SchemaVersion.deleted_at.is_(None))
             .order_by(SchemaVersion.version_number.desc())
         ).all()
+    archive_dependencies = [
+        _dependency_item("Feature Set", feature_set.name, f"#{feature_set.id}", f"/ui/feature-sets/{feature_set.id}")
+        for feature_set in feature_sets
+        if feature_set.deleted_at is None
+    ]
     lineage_graph = _build_lineage_graph(db, "dataset_version", dataset_version_id)
+    lineage_upstream, lineage_downstream = _direct_lineage_dependencies(db, "dataset_version", dataset_version_id)
 
     context = {
         **_load_dashboard_data(db),
@@ -722,6 +1102,9 @@ def dataset_version_detail(
         "schema_version": schema_version,
         "schema_versions": schema_versions,
         "feature_sets": feature_sets,
+        "archive_dependencies": archive_dependencies,
+        "lineage_upstream": lineage_upstream,
+        "lineage_downstream": lineage_downstream,
         "message": message,
         "error": error,
         "lineage_graph": lineage_graph,
@@ -756,7 +1139,13 @@ def feature_set_detail(
     dataset_versions = db.scalars(
         select(DatasetVersion).where(DatasetVersion.deleted_at.is_(None)).order_by(DatasetVersion.id.desc())
     ).all()
+    archive_dependencies = [
+        _dependency_item("Experiment", experiment.name, f"#{experiment.id} · {experiment.status}", f"/ui/experiments/{experiment.id}")
+        for experiment in experiments
+        if experiment.deleted_at is None
+    ]
     lineage_graph = _build_lineage_graph(db, "feature_set", feature_set_id)
+    lineage_upstream, lineage_downstream = _direct_lineage_dependencies(db, "feature_set", feature_set_id)
 
     context = {
         **_load_dashboard_data(db),
@@ -766,6 +1155,9 @@ def feature_set_detail(
         "dataset": dataset,
         "dataset_versions": dataset_versions,
         "experiments": experiments,
+        "archive_dependencies": archive_dependencies,
+        "lineage_upstream": lineage_upstream,
+        "lineage_downstream": lineage_downstream,
         "message": message,
         "error": error,
         "lineage_graph": lineage_graph,
@@ -795,6 +1187,7 @@ def model_detail(
     dataset_version = db.get(DatasetVersion, feature_set.dataset_version_id) if feature_set else None
     dataset = db.get(Dataset, dataset_version.dataset_id) if dataset_version else None
     lineage_graph = _build_lineage_graph(db, "model", model_id)
+    lineage_upstream, lineage_downstream = _direct_lineage_dependencies(db, "model", model_id)
 
     context = {
         **_load_dashboard_data(db),
@@ -804,6 +1197,9 @@ def model_detail(
         "feature_set": feature_set,
         "dataset_version": dataset_version,
         "dataset": dataset,
+        "archive_dependencies": [],
+        "lineage_upstream": lineage_upstream,
+        "lineage_downstream": lineage_downstream,
         "message": message,
         "error": error,
         "lineage_graph": lineage_graph,
@@ -1207,7 +1603,18 @@ def experiment_detail(
         db.get(DatasetVersion, feature_set.dataset_version_id) if feature_set else None
     )
     dataset = db.get(Dataset, dataset_version.dataset_id) if dataset_version else None
+    models = db.scalars(
+        select(Model)
+        .where(Model.experiment_id == experiment_id)
+        .order_by(Model.id.desc())
+    ).all()
+    archive_dependencies = [
+        _dependency_item("Model", model.name, f"#{model.id} · {model.framework or 'framework not set'}", f"/ui/models/{model.id}")
+        for model in models
+        if model.deleted_at is None
+    ]
     lineage_graph = _build_lineage_graph(db, "experiment", experiment_id)
+    lineage_upstream, lineage_downstream = _direct_lineage_dependencies(db, "experiment", experiment_id)
 
     context = {
         "request": request,
@@ -1215,6 +1622,10 @@ def experiment_detail(
         "feature_set": feature_set,
         "dataset_version": dataset_version,
         "dataset": dataset,
+        "models": models,
+        "archive_dependencies": archive_dependencies,
+        "lineage_upstream": lineage_upstream,
+        "lineage_downstream": lineage_downstream,
         "message": message,
         "error": error,
         "lineage_graph": lineage_graph,
@@ -1231,6 +1642,18 @@ def delete_experiment_ui(db: DBSession, experiment_id: int) -> RedirectResponse:
     experiment = db.get(Experiment, experiment_id)
     if experiment is None:
         return RedirectResponse(url="/ui", status_code=303)
+
+    has_model = db.scalar(
+        select(Model.id)
+        .where(Model.experiment_id == experiment_id, Model.deleted_at.is_(None))
+        .limit(1)
+    )
+    if has_model is not None:
+        return RedirectResponse(
+            url=_dependency_error_url(f"/ui/experiments/{experiment_id}", "Cannot archive experiment: active models reference it"),
+            status_code=303,
+        )
+
     if experiment.deleted_at is None:
         experiment.mark_deleted()
         db.commit()
@@ -1300,9 +1723,21 @@ _ENTITY_MODELS = {
 }
 
 
-def _archived_rows(db: DBSession) -> dict[str, list[dict]]:
+def _archived_rows(db: DBSession, entity_type: str = "", q: str = "") -> dict[str, list[dict]]:
     def fmt(dt) -> str:
         return dt.strftime("%Y-%m-%d %H:%M") if dt else "—"
+
+    def linked_id(row_type: str, row_id: int) -> dict[str, str]:
+        return {"text": f"#{row_id}", "url": _entity_detail_url(row_type, row_id)}
+
+    def row_matches(row: dict) -> bool:
+        if entity_type and row["type"] != entity_type:
+            return False
+        if not q:
+            return True
+        haystack = " ".join(str(cell.get("text", "")) if isinstance(cell, dict) else str(cell) for cell in row["cells"])
+        haystack = f"{row['type']} {haystack} {row['deleted_at']}".lower()
+        return q.lower() in haystack
 
     sources = db.scalars(
         select(DataSource).where(DataSource.deleted_at.is_not(None)).order_by(DataSource.id.desc())
@@ -1326,36 +1761,38 @@ def _archived_rows(db: DBSession) -> dict[str, list[dict]]:
         select(Model).where(Model.deleted_at.is_not(None)).order_by(Model.id.desc())
     ).all()
 
-    return {
+    rows = {
         "sources": [
             {"type": "source", "id": s.id, "cells": [f"#{s.id}", s.name, s.source_type], "deleted_at": fmt(s.local_deleted_at)}
             for s in sources
         ],
         "datasets": [
-            {"type": "dataset", "id": d.id, "cells": [f"#{d.id}", d.name, f"#{d.source_id}"], "deleted_at": fmt(d.local_deleted_at)}
+            {"type": "dataset", "id": d.id, "cells": [linked_id("dataset", d.id), d.name, f"#{d.source_id}"], "deleted_at": fmt(d.local_deleted_at)}
             for d in datasets
         ],
         "schema_versions": [
-            {"type": "schema_version", "id": sv.id, "cells": [f"#{sv.id}", f"#{sv.dataset_id}", f"v{sv.version_number}"], "deleted_at": fmt(sv.local_deleted_at)}
+            {"type": "schema_version", "id": sv.id, "cells": [linked_id("schema_version", sv.id), f"#{sv.dataset_id}", f"v{sv.version_number}"], "deleted_at": fmt(sv.local_deleted_at)}
             for sv in schema_versions
         ],
         "dataset_versions": [
-            {"type": "dataset_version", "id": v.id, "cells": [f"#{v.id}", f"#{v.dataset_id}", f"v{v.version_number}"], "deleted_at": fmt(v.local_deleted_at)}
+            {"type": "dataset_version", "id": v.id, "cells": [linked_id("dataset_version", v.id), f"#{v.dataset_id}", f"v{v.version_number}"], "deleted_at": fmt(v.local_deleted_at)}
             for v in dataset_versions
         ],
         "feature_sets": [
-            {"type": "feature_set", "id": fs.id, "cells": [f"#{fs.id}", fs.name, f"#{fs.dataset_version_id}"], "deleted_at": fmt(fs.local_deleted_at)}
+            {"type": "feature_set", "id": fs.id, "cells": [linked_id("feature_set", fs.id), fs.name, f"#{fs.dataset_version_id}"], "deleted_at": fmt(fs.local_deleted_at)}
             for fs in feature_sets
         ],
         "experiments": [
-            {"type": "experiment", "id": e.id, "cells": [f"#{e.id}", e.name, f"#{e.feature_set_id}"], "deleted_at": fmt(e.local_deleted_at)}
+            {"type": "experiment", "id": e.id, "cells": [linked_id("experiment", e.id), e.name, f"#{e.feature_set_id}"], "deleted_at": fmt(e.local_deleted_at)}
             for e in experiments
         ],
         "models": [
-            {"type": "model", "id": m.id, "cells": [f"#{m.id}", m.name, f"#{m.experiment_id}"], "deleted_at": fmt(m.local_deleted_at)}
+            {"type": "model", "id": m.id, "cells": [linked_id("model", m.id), m.name, f"#{m.experiment_id}"], "deleted_at": fmt(m.local_deleted_at)}
             for m in models
         ],
     }
+
+    return {section: [row for row in section_rows if row_matches(row)] for section, section_rows in rows.items()}
 
 
 @router.get("/search/datasets", response_class=HTMLResponse)
@@ -1392,6 +1829,83 @@ def search_experiments_ui(
             "feature_lookup": feature_lookup,
             "filter_q": q,
             "filter_status": status,
+        },
+    )
+
+
+@router.get("/reports", response_class=HTMLResponse)
+def reports_view(request: Request, db: DBSession) -> HTMLResponse:
+    dashboard_data = _load_dashboard_data(db)
+    return templates.TemplateResponse(
+        "ui/reports.html.j2",
+        {
+            "request": request,
+            "report_overviews": _build_report_overviews(dashboard_data),
+            **dashboard_data,
+        },
+    )
+
+
+@router.get("/search", response_class=HTMLResponse)
+def global_search_view(request: Request, db: DBSession, q: str = "") -> HTMLResponse:
+    results = _build_global_search_results(db, q)
+    return templates.TemplateResponse(
+        "ui/search.html.j2",
+        {
+            "request": request,
+            "q": q,
+            "results": results,
+        },
+    )
+
+
+@router.get("/compare", response_class=HTMLResponse)
+def compare_view(
+    request: Request,
+    db: DBSession,
+    compare_type: str = "schema",
+    left_id: int | None = None,
+    right_id: int | None = None,
+) -> HTMLResponse:
+    if compare_type not in {"schema", "feature_set"}:
+        compare_type = "schema"
+
+    data = _load_dashboard_data(db)
+    result = None
+    left_obj = None
+    right_obj = None
+    error = None
+
+    if left_id is not None and right_id is not None:
+        if compare_type == "schema":
+            left_obj = db.get(SchemaVersion, left_id)
+            right_obj = db.get(SchemaVersion, right_id)
+            if left_obj is None or right_obj is None:
+                error = "Selected schema version does not exist"
+            elif left_obj.dataset_id != right_obj.dataset_id:
+                error = "Schema versions must belong to the same dataset"
+            else:
+                result = _compare_json_items(left_obj.schema_json, right_obj.schema_json, "fields")
+        else:
+            left_obj = db.get(FeatureSet, left_id)
+            right_obj = db.get(FeatureSet, right_id)
+            if left_obj is None or right_obj is None:
+                error = "Selected feature set does not exist"
+            else:
+                result = _compare_json_items(left_obj.feature_schema_json, right_obj.feature_schema_json, "features")
+
+    return templates.TemplateResponse(
+        "ui/compare.html.j2",
+        {
+            "request": request,
+            "compare_type": compare_type,
+            "left_id": left_id,
+            "right_id": right_id,
+            "left_obj": left_obj,
+            "right_obj": right_obj,
+            "result": result,
+            "error": error,
+            **data,
         },
     )
 
@@ -1433,12 +1947,17 @@ def archive_view(
     db: DBSession,
     message: str | None = None,
     error: str | None = None,
+    entity_type: str = "",
+    q: str = "",
 ) -> HTMLResponse:
     return templates.TemplateResponse(
         "ui/archive.html.j2",
         {
             "request": request,
-            "archived": _archived_rows(db),
+            "archived": _archived_rows(db, entity_type=entity_type, q=q),
+            "archive_entity_type": entity_type,
+            "archive_q": q,
+            "archive_entity_types": list(_ENTITY_MODELS.keys()),
             "message": message,
             "error": error,
         },
@@ -1450,16 +1969,25 @@ def archive_restore(
     db: DBSession,
     entity_type: str = Form(...),
     entity_id: int = Form(...),
+    filter_entity_type: str = Form(""),
+    q: str = Form(""),
 ) -> RedirectResponse:
+    params = []
+    if filter_entity_type:
+        params.append(f"entity_type={filter_entity_type}")
+    if q:
+        params.append(f"q={q}")
+    archive_url = "/ui/archive" + ("?" + "&".join(params) if params else "")
+
     model_cls = _ENTITY_MODELS.get(entity_type)
     if model_cls is None:
-        return RedirectResponse(url="/ui/archive", status_code=303)
+        return RedirectResponse(url=archive_url, status_code=303)
     obj = db.get(model_cls, entity_id)
     if obj is None or obj.deleted_at is None:
-        return RedirectResponse(url="/ui/archive", status_code=303)
+        return RedirectResponse(url=archive_url, status_code=303)
     obj.restore()
     db.commit()
-    return RedirectResponse(url="/ui/archive", status_code=303)
+    return RedirectResponse(url=archive_url, status_code=303)
 
 
 @router.post("/experiments/{experiment_id}/restore")

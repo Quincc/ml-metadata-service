@@ -17,6 +17,66 @@
   </div>
 {%- endmacro %}
 
+{% macro archive_impact(items) -%}
+  <section class="panel wide impact-panel {% if not items %}safe{% endif %}">
+    {{ panel_header('Archive impact', items and 'Active dependencies found' or 'No active downstream dependencies') }}
+    {% if items %}
+      <p class="panel-copy">
+        These active objects depend on the current entity. Archive is blocked until they are archived or relinked.
+      </p>
+      <div class="impact-list">
+        {% for item in items %}
+          <a class="impact-item" href="{{ item.url }}">
+            <span class="impact-kind">{{ item.kind }}</span>
+            <strong>{{ item.title }}</strong>
+            <span>{{ item.meta }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="panel-copy">
+        The entity has no active downstream dependencies, so archiving it will not leave active child objects without their parent metadata.
+      </p>
+    {% endif %}
+  </section>
+{%- endmacro %}
+
+{% macro lineage_dependencies(upstream, downstream) -%}
+  <section class="panel wide dependency-panel">
+    {{ panel_header('Related metadata', 'Direct upstream / downstream dependencies', 'Quick view of direct lineage links for the current entity.') }}
+    <div class="dependency-grid">
+      <div class="dependency-column">
+        <h3>Upstream</h3>
+        <p class="panel-copy">Objects used as inputs or parents.</p>
+        {% for item in upstream %}
+          {% if item.url %}<a class="dependency-card" href="{{ item.url }}">{% else %}<article class="dependency-card">{% endif %}
+            <span class="impact-kind">{{ item.kind }}</span>
+            <strong>{{ item.title }}</strong>
+            <span>{{ item.meta }}</span>
+            <em>{{ item.relation }}</em>
+          {% if item.url %}</a>{% else %}</article>{% endif %}
+        {% else %}
+          <p class="muted">No direct upstream dependencies</p>
+        {% endfor %}
+      </div>
+      <div class="dependency-column">
+        <h3>Downstream</h3>
+        <p class="panel-copy">Objects that depend on this entity.</p>
+        {% for item in downstream %}
+          {% if item.url %}<a class="dependency-card" href="{{ item.url }}">{% else %}<article class="dependency-card">{% endif %}
+            <span class="impact-kind">{{ item.kind }}</span>
+            <strong>{{ item.title }}</strong>
+            <span>{{ item.meta }}</span>
+            <em>{{ item.relation }}</em>
+          {% if item.url %}</a>{% else %}</article>{% endif %}
+        {% else %}
+          <p class="muted">No direct downstream dependencies</p>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+{%- endmacro %}
+
 {% macro entity_table(headers, rows, empty_text='No data yet') -%}
   <div class="table-wrap">
     <table>

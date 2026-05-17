@@ -50,6 +50,12 @@
     {% if message %}<div class="notice success">{{ message }}</div>{% endif %}
     {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
 
+    {% if not dataset.deleted_at %}
+      {{ displays.archive_impact(archive_dependencies) }}
+    {% endif %}
+
+    {{ displays.lineage_dependencies(lineage_upstream, lineage_downstream) }}
+
     {% set schema_rows = [] %}
     {% for sv in schema_versions %}
       {% set _ = schema_rows.append([

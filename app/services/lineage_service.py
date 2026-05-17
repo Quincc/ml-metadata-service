@@ -56,8 +56,17 @@ class LineageService:
         db: Session,
         entity_type: str,
         entity_id: int,
+        mode: str = "full",
     ) -> tuple[list[tuple[str, int]], list[LineageEdge]]:
-        """Получаем полный граф lineage для сущности."""
+        """Получаем lineage-граф для сущности.
+
+        full: все связанные узлы; direct: только ближайшие связи;
+        upstream: объекты, от которых зависит выбранная сущность;
+        downstream: объекты, которые зависят от выбранной сущности.
+        """
+        if mode not in {"full", "direct", "upstream", "downstream"}:
+            mode = "full"
+
         queue: deque[tuple[str, int]] = deque([(entity_type, entity_id)])
         visited_nodes = {(entity_type, entity_id)}
         visited_edges: set[int] = set()
@@ -65,21 +74,30 @@ class LineageService:
 
         while queue:
             current_type, current_id = queue.popleft()
-            result = cls.filter_all(
-                db=db,
-                where_clause=[
-                    or_(
-                        and_(
-                            LineageEdge.from_entity_type == current_type,
-                            LineageEdge.from_entity_id == current_id,
-                        ),
-                        and_(
-                            LineageEdge.to_entity_type == current_type,
-                            LineageEdge.to_entity_id == current_id,
-                        ),
-                    )
-                ],
-            )
+
+            if mode == "upstream":
+                edge_filter = and_(
+                    LineageEdge.to_entity_type == current_type,
+                    LineageEdge.to_entity_id == current_id,
+                )
+            elif mode == "downstream":
+                edge_filter = and_(
+                    LineageEdge.from_entity_type == current_type,
+                    LineageEdge.from_entity_id == current_id,
+                )
+            else:
+                edge_filter = or_(
+                    and_(
+                        LineageEdge.from_entity_type == current_type,
+                        LineageEdge.from_entity_id == current_id,
+                    ),
+                    and_(
+                        LineageEdge.to_entity_type == current_type,
+                        LineageEdge.to_entity_id == current_id,
+                    ),
+                )
+
+            result = cls.filter_all(db=db, where_clause=[edge_filter])
 
             for edge in result:
                 if edge.id in visited_edges:
@@ -88,14 +106,21 @@ class LineageService:
                 visited_edges.add(edge.id)
                 edges.append(edge)
 
-                neighbors = [
-                    (edge.from_entity_type, edge.from_entity_id),
-                    (edge.to_entity_type, edge.to_entity_id),
-                ]
+                if mode == "upstream":
+                    neighbors = [(edge.from_entity_type, edge.from_entity_id)]
+                elif mode == "downstream":
+                    neighbors = [(edge.to_entity_type, edge.to_entity_id)]
+                else:
+                    neighbors = [
+                        (edge.from_entity_type, edge.from_entity_id),
+                        (edge.to_entity_type, edge.to_entity_id),
+                    ]
+
                 for neighbor in neighbors:
                     if neighbor not in visited_nodes:
                         visited_nodes.add(neighbor)
-                        queue.append(neighbor)
+                        if mode != "direct":
+                            queue.append(neighbor)
 
         nodes = [
             (node_type, node_id)
@@ -146,9 +171,9 @@ def add_lineage_edge(
     )
 
 
-def get_lineage_graph(db: Session, entity_type: str, entity_id: int) -> tuple[list[tuple[str, int]], list[LineageEdge]]:
+def get_lineage_graph(db: Session, entity_type: str, entity_id: int, mode: str = "full") -> tuple[list[tuple[str, int]], list[LineageEdge]]:
     """Совместимость со старым функциональным стилем."""
-    return LineageService.get_graph(db=db, entity_type=entity_type, entity_id=entity_id)
+    return LineageService.get_graph(db=db, entity_type=entity_type, entity_id=entity_id, mode=mode)
 
 
 def soft_delete_related_edges(db: Session, entity_type: str, entity_id: int) -> None:

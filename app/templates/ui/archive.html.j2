@@ -23,10 +23,32 @@
     {% if message %}<div class="notice success">{{ message }}</div>{% endif %}
     {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
 
+    <section class="panel wide">
+      {{ displays.panel_header('Archive filters', 'Find archived metadata') }}
+      <form method="get" action="/ui/archive" class="archive-filter-form">
+        <label>
+          <span>Entity type</span>
+          <select name="entity_type">
+            <option value="">All types</option>
+            {% for item in archive_entity_types %}
+              <option value="{{ item }}" {% if archive_entity_type == item %}selected{% endif %}>{{ item.replace('_', ' ') }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Search archived rows</span>
+          <input type="search" name="q" value="{{ archive_q }}" placeholder="name, id, type, relation id" />
+        </label>
+        <button type="submit">Apply filters</button>
+      </form>
+    </section>
+
     {% macro restore_form(entity_type, entity_id) %}
       <form method="post" action="/ui/archive/restore" style="display:inline">
         <input type="hidden" name="entity_type" value="{{ entity_type }}" />
         <input type="hidden" name="entity_id" value="{{ entity_id }}" />
+        <input type="hidden" name="filter_entity_type" value="{{ archive_entity_type }}" />
+        <input type="hidden" name="q" value="{{ archive_q }}" />
         <button type="submit">Restore</button>
       </form>
     {% endmacro %}
@@ -47,7 +69,17 @@
               <tbody>
                 {% for row in items %}
                   <tr>
-                    {% for cell in row.cells %}<td>{{ cell }}</td>{% endfor %}
+                    {% for cell in row.cells %}
+                      <td>
+                        {% if cell is mapping and cell.url %}
+                          <a href="{{ cell.url }}">{{ cell.text }}</a>
+                        {% elif cell is mapping %}
+                          {{ cell.text }}
+                        {% else %}
+                          {{ cell }}
+                        {% endif %}
+                      </td>
+                    {% endfor %}
                     <td>{{ row.deleted_at }}</td>
                     <td>{{ restore_form(row.type, row.id) }}</td>
                   </tr>

@@ -69,6 +69,12 @@
     {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
 
     {% if not experiment.deleted_at %}
+      {{ displays.archive_impact(archive_dependencies) }}
+    {% endif %}
+
+    {{ displays.lineage_dependencies(lineage_upstream, lineage_downstream) }}
+
+    {% if not experiment.deleted_at %}
       <section class="panel wide collapsible-panel">
         <details class="edit-details">
           <summary>

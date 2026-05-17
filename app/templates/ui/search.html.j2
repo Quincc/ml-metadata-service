@@ -1,0 +1,55 @@
+{% extends "base.html.j2" %}
+{% import "components/displays.html.j2" as displays %}
+
+{% block title %}Search · Metadata Atlas{% endblock title %}
+
+{% block body %}
+  <div class="page-shell">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <header class="hero">
+      <div class="hero-main">
+        <p class="eyebrow"><a class="ghost-link" href="/ui">← Dashboard</a></p>
+        <h1>Search</h1>
+        <p class="hero-copy">
+          Быстрый поиск по основным объектам metadata catalog: datasets, versions, feature sets, experiments и models.
+        </p>
+      </div>
+      <div class="hero-actions">
+        <a class="ghost-link" href="/ui/compare">Compare versions</a>
+        <a class="ghost-link" href="/ui/archive">Archive</a>
+      </div>
+    </header>
+
+    <section class="panel wide">
+      {{ displays.panel_header('Global search', 'Find metadata objects') }}
+      <form method="get" action="/ui/search" class="search-page-form">
+        <label>
+          <span>Search query</span>
+          <input type="search" name="q" value="{{ q }}" placeholder="dataset, experiment, model name or numeric version id" autofocus />
+        </label>
+        <button type="submit">Search</button>
+      </form>
+    </section>
+
+    <section class="panel wide">
+      {{ displays.panel_header('Results', q and ('Found ' ~ (results | length) ~ ' items') or 'Enter a query') }}
+      {% if results %}
+        <div class="search-results-grid">
+          {% for item in results %}
+            <a class="search-result-card" href="{{ item.url }}">
+              <span class="impact-kind">{{ item.kind }}</span>
+              <strong>{{ item.title }}</strong>
+              <span>{{ item.meta }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% elif q %}
+        <p class="muted">No metadata objects found for "{{ q }}".</p>
+      {% else %}
+        <p class="muted">Try searching for a dataset, feature set, experiment, model, or numeric version id.</p>
+      {% endif %}
+    </section>
+  </div>
+{% endblock body %}

@@ -1,0 +1,154 @@
+{% extends "base.html.j2" %}
+{% import "components/displays.html.j2" as displays %}
+
+{% block title %}Reports · Metadata Atlas{% endblock title %}
+
+{% block body %}
+  <div class="page-shell">
+    <div class="ambient ambient-left"></div>
+    <div class="ambient ambient-right"></div>
+
+    <header class="hero">
+      <div class="hero-main">
+        <p class="eyebrow"><a class="ghost-link" href="/ui">← Dashboard</a></p>
+        <h1>Reports</h1>
+        <p class="hero-copy">
+          Экспортируйте отчёты по датасетам, экспериментам и полной pipeline-цепочке до модели.
+        </p>
+      </div>
+      <div class="hero-actions">
+        <a class="ghost-link" href="/ui/search">Search metadata</a>
+        <a class="ghost-link" href="/ui/compare">Compare versions</a>
+      </div>
+    </header>
+
+    <section class="stats-panel">
+      {{ displays.stat_card('Datasets', counts.datasets) }}
+      {{ displays.stat_card('Experiments', counts.experiments) }}
+      {{ displays.stat_card('Models', counts.models) }}
+      {{ displays.stat_card('Feature Sets', counts.feature_sets) }}
+      {{ displays.stat_card('Schema Versions', counts.schema_versions) }}
+      {{ displays.stat_card('Dataset Versions', counts.dataset_versions) }}
+    </section>
+
+    <section class="panel report-card">
+      {{ displays.panel_header('JSON export', 'Dataset report', 'Dataset, source, schema versions, dataset versions and feature sets.') }}
+      <form method="get" class="report-form" data-report-prefix="/datasets" data-report-suffix="/report">
+        <label>
+          <span>Dataset</span>
+          <select name="entity_id" required>
+            <option value="">Select dataset</option>
+            {% for dataset in datasets %}
+              {% set overview = report_overviews.datasets.get(dataset.id) %}
+              <option
+                value="{{ dataset.id }}"
+                data-summary="{{ overview.summary if overview else '' }}"
+                data-includes="{{ overview.includes|join('|') if overview else '' }}"
+                data-detail-url="{{ overview.detail_url if overview else '' }}"
+              >#{{ dataset.id }} · {{ dataset.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit" disabled>Download JSON</button>
+      </form>
+      <div class="report-preview" data-report-preview>
+        <p class="muted">Select a dataset to preview report contents.</p>
+      </div>
+    </section>
+
+    <section class="panel report-card">
+      {{ displays.panel_header('Markdown export', 'Experiment report', 'Lineage summary, parameters, metrics and produced models.') }}
+      <form method="get" class="report-form" data-report-prefix="/experiments" data-report-suffix="/report">
+        <label>
+          <span>Experiment</span>
+          <select name="entity_id" required>
+            <option value="">Select experiment</option>
+            {% for experiment in experiments %}
+              {% set overview = report_overviews.experiments.get(experiment.id) %}
+              <option
+                value="{{ experiment.id }}"
+                data-summary="{{ overview.summary if overview else '' }}"
+                data-includes="{{ overview.includes|join('|') if overview else '' }}"
+                data-detail-url="{{ overview.detail_url if overview else '' }}"
+              >#{{ experiment.id }} · {{ experiment.name }} · {{ experiment.status }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit" disabled>Download Markdown</button>
+      </form>
+      <div class="report-preview" data-report-preview>
+        <p class="muted">Select an experiment to preview report contents.</p>
+      </div>
+    </section>
+
+    <section class="panel wide report-card featured-report">
+      {{ displays.panel_header('Markdown export', 'Full model pipeline report', 'Complete chain from source and dataset versions to feature set, experiment and registered model.') }}
+      <form method="get" class="report-form" data-report-prefix="/models" data-report-suffix="/pipeline-report">
+        <label>
+          <span>Model</span>
+          <select name="entity_id" required>
+            <option value="">Select model</option>
+            {% for model in models %}
+              {% set overview = report_overviews.models.get(model.id) %}
+              <option
+                value="{{ model.id }}"
+                data-summary="{{ overview.summary if overview else '' }}"
+                data-includes="{{ overview.includes|join('|') if overview else '' }}"
+                data-detail-url="{{ overview.detail_url if overview else '' }}"
+              >#{{ model.id }} · {{ model.name }} · {{ model.framework or 'framework not set' }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit" disabled>Download Pipeline Report</button>
+      </form>
+      <div class="report-preview" data-report-preview>
+        <p class="muted">Select a model to preview the full pipeline report.</p>
+      </div>
+    </section>
+
+    <script>
+      function renderReportPreview(form) {
+        var select = form.querySelector('select[name="entity_id"]');
+        var button = form.querySelector('button[type="submit"]');
+        var preview = form.parentElement.querySelector('[data-report-preview]');
+        var option = select && select.selectedOptions ? select.selectedOptions[0] : null;
+
+        if (!select || !button || !preview || !option || !option.value) {
+          button.disabled = true;
+          return;
+        }
+
+        button.disabled = false;
+        var summary = option.dataset.summary || 'No preview metadata available.';
+        var detailUrl = option.dataset.detailUrl || '';
+        var includes = (option.dataset.includes || '').split('|').filter(Boolean);
+        var items = includes.map(function (item) {
+          return '<li>' + item + '</li>';
+        }).join('');
+        var detailLink = detailUrl
+          ? '<a class="ghost-link compact-link" href="' + detailUrl + '">Open detail page</a>'
+          : '';
+
+        preview.innerHTML = ''
+          + '<p class="report-summary">' + summary + '</p>'
+          + '<div class="report-preview-body">'
+          + '<div><span class="impact-kind">Included sections</span><ul>' + items + '</ul></div>'
+          + detailLink
+          + '</div>';
+      }
+
+      document.querySelectorAll('.report-form').forEach(function (form) {
+        renderReportPreview(form);
+        form.addEventListener('change', function () {
+          renderReportPreview(form);
+        });
+        form.addEventListener('submit', function (event) {
+          event.preventDefault();
+          var select = form.querySelector('select[name="entity_id"]');
+          if (!select || !select.value) return;
+          window.location.href = form.dataset.reportPrefix + '/' + encodeURIComponent(select.value) + form.dataset.reportSuffix;
+        });
+      });
+    </script>
+  </div>
+{% endblock body %}
